@@ -16,26 +16,19 @@ public class WorkspaceService
 
     public async Task<WorkspaceDto> CreateAsync(CreateWorkspaceDto dto, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(dto.Name))
-        {
-            throw new ArgumentException("Workspace name is required.", nameof(dto.Name));
-        }
-
-        if (string.IsNullOrWhiteSpace(dto.AssessmentType))
-        {
-            throw new ArgumentException("Assessment type is required.", nameof(dto.AssessmentType));
-        }
-
-        if (string.IsNullOrWhiteSpace(dto.CreatedBy))
-        {
-            throw new ArgumentException("Created by is required.", nameof(dto.CreatedBy));
-        }
+        FieldRules.RequireText(dto.Name, FieldRules.MaxNameLength, "Workspace name is required.", nameof(dto.Name));
+        FieldRules.RequireText(dto.AssessmentType, FieldRules.MaxNameLength, "Assessment type is required.", nameof(dto.AssessmentType));
+        var corridor = FieldRules.NormaliseCorridor(dto.Corridor, nameof(dto.Corridor));
+        FieldRules.RequireSurveyYear(dto.SurveyYear, nameof(dto.SurveyYear));
+        FieldRules.RequireText(dto.CreatedBy, FieldRules.MaxNameLength, "Created by is required.", nameof(dto.CreatedBy));
 
         var workspace = new Workspace
         {
             Id = Guid.NewGuid().ToString(),
             Name = dto.Name,
             AssessmentType = dto.AssessmentType,
+            Corridor = corridor,
+            SurveyYear = dto.SurveyYear,
             Status = Domain.Enum.WorkspaceStatus.Active,
             CreatedBy = dto.CreatedBy,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -71,14 +64,14 @@ public class WorkspaceService
             throw new ArgumentException("Workspace ID is required.", nameof(id));
         }
 
-        if (string.IsNullOrWhiteSpace(dto.Name))
-        {
-            throw new ArgumentException("Workspace name is required.", nameof(dto.Name));
-        }
+        FieldRules.RequireText(dto.Name, FieldRules.MaxNameLength, "Workspace name is required.", nameof(dto.Name));
+        FieldRules.RequireText(dto.AssessmentType, FieldRules.MaxNameLength, "Assessment type is required.", nameof(dto.AssessmentType));
+        var corridor = FieldRules.NormaliseCorridor(dto.Corridor, nameof(dto.Corridor));
+        FieldRules.RequireSurveyYear(dto.SurveyYear, nameof(dto.SurveyYear));
 
-        if (string.IsNullOrWhiteSpace(dto.AssessmentType))
+        if (!Enum.IsDefined(dto.Status))
         {
-            throw new ArgumentException("Assessment type is required.", nameof(dto.AssessmentType));
+            throw new ArgumentException("Status is not a known workspace status.", nameof(dto.Status));
         }
 
         var workspace = await _workspaceRepository.GetByIdAsync(id, cancellationToken);
@@ -89,6 +82,8 @@ public class WorkspaceService
 
         workspace.Name = dto.Name;
         workspace.AssessmentType = dto.AssessmentType;
+        workspace.Corridor = corridor;
+        workspace.SurveyYear = dto.SurveyYear;
         workspace.Status = dto.Status;
         workspace.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -115,6 +110,8 @@ public class WorkspaceService
             Id = workspace.Id,
             Name = workspace.Name,
             AssessmentType = workspace.AssessmentType,
+            Corridor = workspace.Corridor,
+            SurveyYear = workspace.SurveyYear,
             Status = workspace.Status,
             CreatedBy = workspace.CreatedBy,
             CreatedAt = workspace.CreatedAt,

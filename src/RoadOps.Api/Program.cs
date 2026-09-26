@@ -1,9 +1,8 @@
 using RoadOps.Api.ErrorHandling;
 using Microsoft.EntityFrameworkCore;
-using RoadOps.Application.Repositories;
-using RoadOps.Application.Services;
+using RoadOps.Application;
+using RoadOps.Infrastructure;
 using RoadOps.Infrastructure.Data;
-using RoadOps.Infrastructure.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,20 +11,9 @@ builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<DatabaseExceptionHandler>();
 
-// Configure PostgreSQL connection
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<RoadOpsDbContext>(options =>
-    options.UseNpgsql(connectionString));
-
-// Register repositories
-builder.Services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
-builder.Services.AddScoped<IRoadSectionRepository, RoadSectionRepository>();
-builder.Services.AddScoped<IPavedRoadRecordRepository, PavedRoadRecordRepository>();
-
-// Register application services
-builder.Services.AddScoped<WorkspaceService>();
-builder.Services.AddScoped<RoadSectionService>();
-builder.Services.AddScoped<PavedRoadRecordService>();
+// PostgreSQL, repositories and application services (same registrations as the MCP server).
+builder.Services.AddRoadOpsInfrastructure(builder.Configuration.GetConnectionString("DefaultConnection"));
+builder.Services.AddRoadOpsApplication();
 
 // Add CORS
 builder.Services.AddCors(options =>

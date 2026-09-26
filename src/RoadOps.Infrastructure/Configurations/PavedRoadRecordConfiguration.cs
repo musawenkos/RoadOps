@@ -67,6 +67,13 @@ public class PavedRoadRecordConfiguration : IEntityTypeConfiguration<PavedRoadRe
         builder.Property(pr => pr.ImagePaths)
             .IsRequired();
 
+        builder.Property(pr => pr.Notes)
+            .HasMaxLength(1000);
+
+        builder.Property(pr => pr.LengthM);
+        builder.Property(pr => pr.WidthM);
+        builder.Property(pr => pr.DepthMm);
+
         builder.Property(pr => pr.CreatedBy)
             .HasMaxLength(255)
             .IsRequired();
@@ -84,6 +91,8 @@ public class PavedRoadRecordConfiguration : IEntityTypeConfiguration<PavedRoadRe
         builder.HasIndex(pr => pr.ChainageFrom);
         builder.HasIndex(pr => pr.CreatedAt);
         builder.HasIndex(pr => pr.DistressType);
+        // Bounding-box prefilter for nearest-observation lookups from GPS.
+        builder.HasIndex(pr => new { pr.Latitude, pr.Longitude });
 
         builder.HasOne<Workspace>()
             .WithMany()

@@ -24,6 +24,12 @@ public class RoadSectionConfiguration : IEntityTypeConfiguration<RoadSection>
             .HasMaxLength(36)
             .IsRequired();
 
+        builder.Property(rs => rs.ChainageFrom)
+            .IsRequired();
+
+        builder.Property(rs => rs.ChainageTo)
+            .IsRequired();
+
         builder.Property(rs => rs.CreatedBy)
             .HasMaxLength(255)
             .IsRequired();
@@ -36,6 +42,7 @@ public class RoadSectionConfiguration : IEntityTypeConfiguration<RoadSection>
 
         builder.HasIndex(rs => new { rs.WorkspaceId, rs.CreatedAt });
         builder.HasIndex(rs => rs.SectionName);
+        builder.HasIndex(rs => new { rs.WorkspaceId, rs.ChainageFrom });
 
         builder.HasOne<Workspace>()
             .WithMany()

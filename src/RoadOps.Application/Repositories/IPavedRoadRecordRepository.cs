@@ -13,6 +13,9 @@ public interface IPavedRoadRecordRepository
     /// <summary>Records lying fully inside [chainageFrom, chainageTo], optionally limited to one workspace.</summary>
     Task<PagedResult<PavedRoadRecord>> FindByChainageRangeAsync(double chainageFrom, double chainageTo, string? workspaceId, PageRequest page, CancellationToken cancellationToken = default);
 
+    /// <summary>The lowest ChainageFrom and highest ChainageTo of the section's records, or null if it has none.</summary>
+    Task<(double From, double To)?> GetChainageExtentBySectionAsync(string sectionId, CancellationToken cancellationToken = default);
+
     Task AddAsync(PavedRoadRecord record, CancellationToken cancellationToken = default);
     Task UpdateAsync(PavedRoadRecord record, CancellationToken cancellationToken = default);
     Task DeleteAsync(string id, CancellationToken cancellationToken = default);

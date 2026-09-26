@@ -13,6 +13,8 @@ Content-Type: application/json
 {
   "name": "N1 Pretoria – Polokwane · VCI 2026",
   "assessmentType": "Visual Condition Assessment (TMH9)",
+  "corridor": "N1",
+  "surveyYear": 2026,
   "createdBy": "inspector"
 }
 
@@ -26,6 +28,8 @@ Content-Type: application/json
 {
   "sectionName": "N1 S01: km 0.0–25.0 (Pretoria)",
   "workspaceId": "{{workspaceId}}",
+  "chainageFrom": 0.0,
+  "chainageTo": 25.0,
   "createdBy": "inspector"
 }
 
@@ -52,9 +56,13 @@ Content-Type: application/json
   "ridingQuality": "Poor",
   "skidResistance": "Fair",
   "stdRef": "TMH9 Part B (Flexible)",
-  "recommendedAction": "Pothole repair – urgent (within 72h)",
+  "recommendedAction": "",
   "latitude": -25.7461,
   "longitude": 28.1881,
   "imagePaths": [],
+  "notes": "Water ponding in the wheel path after rain.",
+  "lengthM": 0.8,
+  "widthM": 0.5,
+  "depthMm": 60,
   "createdBy": "inspector"
 }

@@ -1,3 +1,4 @@
+using RoadOps.Application.Rules;
 using RoadOps.Domain.Entities;
 using RoadOps.Domain.Enum;
 
@@ -73,6 +74,8 @@ public sealed class SyntheticDataGenerator(int seed, double segmentKm)
             Id = Guid.NewGuid().ToString(),
             Name = $"{route.Name} · VCI {campaign.Year}",
             AssessmentType = "Visual Condition Assessment (TMH9)",
+            Corridor = route.Code,
+            SurveyYear = campaign.Year,
             Status = status,
             CreatedBy = RouteCatalog.Inspectors[random.Next(RouteCatalog.Inspectors.Length)],
             CreatedAt = campaign.StartDate.AddDays(-7).AddHours(9),
@@ -100,12 +103,17 @@ public sealed class SyntheticDataGenerator(int seed, double segmentKm)
                     Id = Guid.NewGuid().ToString(),
                     WorkspaceId = workspace.Id,
                     SectionName = $"{route.Code} S{sectionNumber:00}: km {fromKm:F1}–{sectionEndKm:F1} ({RouteCatalog.NearestPlace(route, fromKm)})",
+                    ChainageFrom = fromKm,
+                    ChainageTo = sectionEndKm,
                     CreatedBy = inspector,
                     CreatedAt = surveyedAt.AddMinutes(-15),
                     UpdatedAt = surveyedAt.AddMinutes(-15),
                 };
                 dataset.Sections.Add(section);
             }
+
+            // The last segment of a section may run past a whole-km end when --segment-km does not divide it evenly.
+            section.ChainageTo = Math.Max(section.ChainageTo, toKm);
 
             var position = RouteCatalog.PositionAt(route, (fromKm + toKm) / 2 / route.LengthKm);
             var cond = condition[i];
@@ -150,7 +158,7 @@ public sealed class SyntheticDataGenerator(int seed, double segmentKm)
             RidingQuality = RidingQualityBand(iri),
             SkidResistance = SkidResistance(distress, cond, random),
             StdRef = surface == SurfaceType.Concrete ? "TMH9 Part C (Rigid)" : "TMH9 Part B (Flexible)",
-            RecommendedAction = RecommendAction(distress, degree, extent),
+            RecommendedAction = RecommendedActionRules.Recommend(distress, degree, extent),
             Latitude = Math.Round(position.Latitude + Gaussian(random) * 0.00004, 6),
             Longitude = Math.Round(position.Longitude + Gaussian(random) * 0.00004, 6),
             ImagePaths = degree >= 3
@@ -161,6 +169,8 @@ public sealed class SyntheticDataGenerator(int seed, double segmentKm)
             CreatedAt = surveyedAt,
             UpdatedAt = surveyedAt,
         };
+
+        AddSiteMeasurements(record, random);
 
         // ~8% of records were corrected during office QA a few days after the survey.
         if (random.NextDouble() < 0.08)
@@ -256,36 +266,44 @@ public sealed class SyntheticDataGenerator(int seed, double segmentKm)
         return options[random.Next(options.Length)];
     }
 
-    private static string RecommendAction(string distress, int degree, int extent)
+    private static readonly string[] InspectorNotes =
+    [
+        "Water ponding in the wheel path after rain.",
+        "Heavy vehicle climbing lane, loaded trucks slow here.",
+        "Culvert nearby, check drainage before repair.",
+        "Earlier patch has failed at the edges.",
+        "Unsealed shoulder is eroding into the lane.",
+        "Distress continues into the next segment.",
+    ];
+
+    /// <summary>Inspectors measure the worse defects on site and add a note to some of them.</summary>
+    private static void AddSiteMeasurements(PavedRoadRecord record, Random random)
     {
-        if (distress == "None")
+        if (record.Degree < 3)
         {
-            return "No action required";
+            return;
         }
 
-        var score = degree * extent;
-        if (score <= 4)
+        switch (record.DistressType)
         {
-            return "Routine maintenance – monitor";
+            case "Potholes" or "Punchouts" or "Corner breaks" or "Surface failure":
+                record.LengthM = Math.Round(0.2 + random.NextDouble() * 0.4 * record.Degree, 2);
+                record.WidthM = Math.Round(0.2 + random.NextDouble() * 0.3 * record.Degree, 2);
+                record.DepthMm = Math.Round(15 + random.NextDouble() * 20 * record.Degree);
+                break;
+            case "Edge breaking" or "Crocodile cracking" or "Patching":
+                record.LengthM = Math.Round(1 + random.NextDouble() * 8 * record.Extent, 1);
+                record.WidthM = Math.Round(0.2 + random.NextDouble() * 0.5 * record.Degree, 2);
+                break;
+            case "Longitudinal cracking" or "Transverse cracking" or "Block cracking" or "Shrinkage cracks":
+                record.LengthM = Math.Round(2 + random.NextDouble() * 15 * record.Extent, 1);
+                break;
         }
 
-        var severe = score > 12;
-        return distress switch
+        if (record.Degree >= 4 && random.NextDouble() < 0.15)
         {
-            "Potholes" => degree >= 3 ? "Pothole repair – urgent (within 72h)" : "Pothole repair",
-            "Crocodile cracking" or "Surface failure" or "Pumping" when severe => "Rehabilitation – base repair and resurfacing",
-            "Crocodile cracking" or "Surface failure" or "Pumping" or "Patching" => "Patching",
-            "Surface cracks" or "Aggregate loss" or "Binder condition" => severe ? "Reseal" : "Fog spray / rejuvenator",
-            "Bleeding" => severe ? "Reseal" : "Apply grit",
-            "Rutting" or "Undulation" => severe ? "Mill and replace" : "Rut fill / levelling",
-            "Edge breaking" => "Edge repair and shoulder maintenance",
-            "Block cracking" or "Transverse cracking" or "Longitudinal cracking" or "Shrinkage cracks" => severe ? "Asphalt overlay" : "Crack sealing",
-            "Joint seal damage" => "Joint resealing",
-            "Joint spalling" => "Partial-depth repair",
-            "Corner breaks" or "Punchouts" => "Full-depth slab repair",
-            "Faulting" => "Diamond grinding and load transfer restoration",
-            _ => "Routine maintenance – monitor",
-        };
+            record.Notes = InspectorNotes[random.Next(InspectorNotes.Length)];
+        }
     }
 
     private static string RidingQualityBand(double iri) => iri switch

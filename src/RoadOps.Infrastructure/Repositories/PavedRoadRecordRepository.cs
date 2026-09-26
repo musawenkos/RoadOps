@@ -56,6 +56,17 @@ public class PavedRoadRecordRepository : IPavedRoadRecordRepository
         return OrderByChainage(query).ToPagedResultAsync(page, cancellationToken);
     }
 
+    public async Task<(double From, double To)?> GetChainageExtentBySectionAsync(string sectionId, CancellationToken cancellationToken = default)
+    {
+        var extent = await _context.PavedRoadRecords
+            .Where(pr => pr.SectionId == sectionId)
+            .GroupBy(_ => 1)
+            .Select(g => new { From = g.Min(pr => pr.ChainageFrom), To = g.Max(pr => pr.ChainageTo) })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return extent is null ? null : (extent.From, extent.To);
+    }
+
     // Several records can share a chainage (one per distress), so Id breaks ties to keep pages stable.
     private static IQueryable<PavedRoadRecord> OrderByChainage(IQueryable<PavedRoadRecord> query) =>
         query.AsNoTracking()

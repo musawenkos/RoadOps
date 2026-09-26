@@ -41,6 +41,15 @@ public class RoadSectionRepository : IRoadSectionRepository
             .ToPagedResultAsync(page, cancellationToken);
     }
 
+    public Task<bool> OverlapsAnotherSectionAsync(string workspaceId, double chainageFrom, double chainageTo, string? excludeSectionId, CancellationToken cancellationToken = default)
+    {
+        return _context.RoadSections.AnyAsync(rs =>
+            rs.WorkspaceId == workspaceId &&
+            (excludeSectionId == null || rs.Id != excludeSectionId) &&
+            rs.ChainageFrom < chainageTo &&
+            rs.ChainageTo > chainageFrom, cancellationToken);
+    }
+
     public async Task AddAsync(RoadSection roadSection, CancellationToken cancellationToken = default)
     {
         await _context.RoadSections.AddAsync(roadSection, cancellationToken);

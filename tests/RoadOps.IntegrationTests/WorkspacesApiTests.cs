@@ -16,11 +16,13 @@ public class WorkspacesApiTests(RoadOpsApiFactory factory)
     public async Task Crud_Lifecycle_Works()
     {
         // Create
-        var create = await _client.PostAsJsonAsync(WorkspacesUrl, NewWorkspace("N4 Maputo Corridor"));
+        var create = await _client.PostAsJsonAsync(WorkspacesUrl, NewWorkspace("N4 Maputo Corridor", corridor: "n4", surveyYear: 2025));
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
         var created = (await create.Content.ReadFromJsonAsync<WorkspaceDto>())!;
         Assert.Equal("N4 Maputo Corridor", created.Name);
         Assert.Equal(WorkspaceStatus.Active, created.Status);
+        Assert.Equal("N4", created.Corridor);
+        Assert.Equal(2025, created.SurveyYear);
         Assert.NotNull(create.Headers.Location);
 
         // Read
@@ -32,11 +34,12 @@ public class WorkspacesApiTests(RoadOpsApiFactory factory)
 
         // Update
         var update = await _client.PutAsJsonAsync($"{WorkspacesUrl}/{created.Id}",
-            new UpdateWorkspaceDto { Name = "N4 Renamed", AssessmentType = "Rut Survey", Status = WorkspaceStatus.Suspended });
+            new UpdateWorkspaceDto { Name = "N4 Renamed", AssessmentType = "Rut Survey", Corridor = "N4", SurveyYear = 2026, Status = WorkspaceStatus.Suspended });
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         var updated = (await update.Content.ReadFromJsonAsync<WorkspaceDto>())!;
         Assert.Equal("N4 Renamed", updated.Name);
         Assert.Equal(WorkspaceStatus.Suspended, updated.Status);
+        Assert.Equal(2026, updated.SurveyYear);
         Assert.True(updated.UpdatedAt >= created.UpdatedAt);
 
         // Delete
@@ -54,6 +57,17 @@ public class WorkspacesApiTests(RoadOpsApiFactory factory)
         Assert.Contains("Workspace name is required", await response.Content.ReadAsStringAsync());
     }
 
+    [Theory]
+    [InlineData("N 1", 2026, "Corridor")]
+    [InlineData("N1", 1800, "Survey year")]
+    public async Task Create_InvalidCorridorOrYear_Returns400(string corridor, int year, string expectedMessage)
+    {
+        var response = await _client.PostAsJsonAsync(WorkspacesUrl, NewWorkspace(corridor: corridor, surveyYear: year));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains(expectedMessage, await response.Content.ReadAsStringAsync());
+    }
+
     [Fact]
     public async Task GetById_Unknown_Returns404()
     {
@@ -64,7 +78,7 @@ public class WorkspacesApiTests(RoadOpsApiFactory factory)
     public async Task Update_Unknown_Returns404()
     {
         var response = await _client.PutAsJsonAsync($"{WorkspacesUrl}/{Guid.NewGuid()}",
-            new UpdateWorkspaceDto { Name = "x", AssessmentType = "y" });
+            new UpdateWorkspaceDto { Name = "x", AssessmentType = "y", Corridor = "N1", SurveyYear = 2026 });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

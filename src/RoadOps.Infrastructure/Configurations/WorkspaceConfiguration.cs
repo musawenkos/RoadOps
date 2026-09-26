@@ -24,6 +24,13 @@ public class WorkspaceConfiguration : IEntityTypeConfiguration<Workspace>
             .HasMaxLength(255)
             .IsRequired();
 
+        builder.Property(w => w.Corridor)
+            .HasMaxLength(12)
+            .IsRequired();
+
+        builder.Property(w => w.SurveyYear)
+            .IsRequired();
+
         builder.Property(w => w.Status)
             .IsRequired();
 
@@ -40,5 +47,6 @@ public class WorkspaceConfiguration : IEntityTypeConfiguration<Workspace>
         builder.HasIndex(w => w.Name);
         builder.HasIndex(w => w.Status);
         builder.HasIndex(w => w.CreatedAt);
+        builder.HasIndex(w => new { w.Corridor, w.SurveyYear });
     }
 }

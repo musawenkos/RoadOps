@@ -20,14 +20,14 @@ public class ControllerTests
     private readonly Mock<IPavedRoadRecordRepository> _records = new();
 
     private WorkspacesController CreateWorkspacesController() => new(new WorkspaceService(_workspaces.Object));
-    private RoadSectionsController CreateSectionsController() => new(new RoadSectionService(_sections.Object, _workspaces.Object));
+    private RoadSectionsController CreateSectionsController() => new(new RoadSectionService(_sections.Object, _workspaces.Object, _records.Object));
     private PavedRoadRecordsController CreateRecordsController() => new(new PavedRoadRecordService(_records.Object, _workspaces.Object, _sections.Object));
 
     [Fact]
     public async Task Workspaces_Create_Valid_Returns201WithLocationRoute()
     {
         var response = await CreateWorkspacesController().Create(
-            new CreateWorkspaceDto { Name = "N1", AssessmentType = "VCI", CreatedBy = "u" }, CancellationToken.None);
+            new CreateWorkspaceDto { Name = "N1", AssessmentType = "VCI", Corridor = "N1", SurveyYear = 2026, CreatedBy = "u" }, CancellationToken.None);
 
         var created = Assert.IsType<CreatedAtActionResult>(response.Result);
         var dto = Assert.IsType<WorkspaceDto>(created.Value);
@@ -67,7 +67,7 @@ public class ControllerTests
     public async Task Workspaces_Update_Missing_Returns404()
     {
         var response = await CreateWorkspacesController().Update("missing",
-            new UpdateWorkspaceDto { Name = "N", AssessmentType = "T" }, CancellationToken.None);
+            new UpdateWorkspaceDto { Name = "N", AssessmentType = "T", Corridor = "N1", SurveyYear = 2026 }, CancellationToken.None);
 
         Assert.IsType<NotFoundResult>(response.Result);
     }
@@ -117,7 +117,7 @@ public class ControllerTests
     {
         var response = await CreateRecordsController().Create(new CreatePavedRoadRecordDto
         {
-            WorkspaceId = "missing", SectionId = "sec", CreatedBy = "u", ChainageFrom = 1, ChainageTo = 2
+            WorkspaceId = "missing", SectionId = "sec", CreatedBy = "u", ChainageFrom = 1, ChainageTo = 2, DistressType = "Potholes", Degree = 3, Extent = 2
         }, CancellationToken.None);
 
         Assert.Contains("does not exist", Assert.IsType<BadRequestObjectResult>(response.Result).Value!.ToString());

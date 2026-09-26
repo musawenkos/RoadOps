@@ -26,6 +26,14 @@ public sealed class PavedRoadRecord
     public double Longitude { get; set; }
     public string[] ImagePaths { get; set; } = [];
 
+    /// <summary>Free-text inspector notes. Stored and returned as data only.</summary>
+    public string? Notes { get; set; }
+
+    /// <summary>Optional on-site dimensions of the defect.</summary>
+    public double? LengthM { get; set; }
+    public double? WidthM { get; set; }
+    public double? DepthMm { get; set; }
+
     public string CreatedBy { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

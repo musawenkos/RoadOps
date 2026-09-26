@@ -22,6 +22,8 @@ public class WorkspaceServiceTests
     {
         Name = "N1 Pretoria",
         AssessmentType = "Visual Condition Assessment",
+        Corridor = "n1 ",
+        SurveyYear = 2026,
         CreatedBy = "inspector"
     };
 
@@ -41,6 +43,8 @@ public class WorkspaceServiceTests
         Assert.Equal("N1 Pretoria", result.Name);
         Assert.Equal("Visual Condition Assessment", result.AssessmentType);
         Assert.Equal(WorkspaceStatus.Active, result.Status);
+        Assert.Equal("N1", result.Corridor);
+        Assert.Equal(2026, result.SurveyYear);
         Assert.Equal("inspector", result.CreatedBy);
         Assert.True((result.UpdatedAt - result.CreatedAt).Duration() < TimeSpan.FromSeconds(1));
     }
@@ -52,7 +56,7 @@ public class WorkspaceServiceTests
     [InlineData("name", "type", "", "CreatedBy")]
     public async Task CreateAsync_MissingRequiredField_ThrowsAndDoesNotPersist(string name, string type, string createdBy, string expectedParam)
     {
-        var dto = new CreateWorkspaceDto { Name = name, AssessmentType = type, CreatedBy = createdBy };
+        var dto = new CreateWorkspaceDto { Name = name, AssessmentType = type, Corridor = "N1", SurveyYear = 2026, CreatedBy = createdBy };
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(dto));
 
@@ -114,12 +118,14 @@ public class WorkspaceServiceTests
         var existing = new Workspace { Id = "ws", Name = "Old", AssessmentType = "Old", CreatedAt = created, UpdatedAt = created };
         _repository.Setup(r => r.GetByIdAsync("ws", It.IsAny<CancellationToken>())).ReturnsAsync(existing);
 
-        var result = await _service.UpdateAsync("ws", new UpdateWorkspaceDto { Name = "New", AssessmentType = "Rut", Status = WorkspaceStatus.Archive });
+        var result = await _service.UpdateAsync("ws", new UpdateWorkspaceDto { Name = "New", AssessmentType = "Rut", Corridor = "N4", SurveyYear = 2024, Status = WorkspaceStatus.Archive });
 
         Assert.NotNull(result);
         Assert.Equal("New", result!.Name);
         Assert.Equal("Rut", result.AssessmentType);
         Assert.Equal(WorkspaceStatus.Archive, result.Status);
+        Assert.Equal("N4", result.Corridor);
+        Assert.Equal(2024, result.SurveyYear);
         Assert.Equal(created, result.CreatedAt);
         Assert.True(result.UpdatedAt > created);
         _repository.Verify(r => r.UpdateAsync(existing, It.IsAny<CancellationToken>()), Times.Once);
@@ -130,7 +136,7 @@ public class WorkspaceServiceTests
     {
         _repository.Setup(r => r.GetByIdAsync("ws", It.IsAny<CancellationToken>())).ReturnsAsync((Workspace?)null);
 
-        var result = await _service.UpdateAsync("ws", new UpdateWorkspaceDto { Name = "N", AssessmentType = "T" });
+        var result = await _service.UpdateAsync("ws", new UpdateWorkspaceDto { Name = "N", AssessmentType = "T", Corridor = "N1", SurveyYear = 2026 });
 
         Assert.Null(result);
         _repository.Verify(r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -154,5 +160,28 @@ public class WorkspaceServiceTests
     public async Task DeleteAsync_BlankId_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() => _service.DeleteAsync(""));
+    }
+    [Theory]
+    [InlineData("", 2026, "Corridor")]
+    [InlineData("N 1", 2026, "Corridor")]
+    [InlineData("N1", 0, "SurveyYear")]
+    [InlineData("N1", 1989, "SurveyYear")]
+    [InlineData("N1", 2101, "SurveyYear")]
+    public async Task CreateAsync_InvalidCorridorOrYear_Throws(string corridor, int year, string expectedParam)
+    {
+        var dto = ValidCreateDto();
+        dto.Corridor = corridor;
+        dto.SurveyYear = year;
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(dto));
+
+        Assert.Equal(expectedParam, ex.ParamName);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UnknownStatus_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync("ws",
+            new UpdateWorkspaceDto { Name = "N", AssessmentType = "T", Corridor = "N1", SurveyYear = 2026, Status = (WorkspaceStatus)42 }));
     }
 }

@@ -20,23 +20,31 @@ public class ApiStressTests(StressTarget target, ITestOutputHelper output) : ICl
     {
         // Arrange: a realistic working set to read from.
         var workspace = await Client.CreateWorkspaceAsync();
+        // Five adjacent 4 km sections (sections of one workspace may not overlap).
+        const double sectionKm = 4;
         var sections = new List<RoadSectionDto>();
         for (var i = 0; i < 5; i++)
         {
-            sections.Add(await Client.CreateSectionAsync(workspace.Id));
+            sections.Add(await Client.CreateSectionAsync(workspace.Id, i * sectionKm, (i + 1) * sectionKm));
         }
 
-        var recordIds = new ConcurrentBag<string>();
+        int SectionIndexAt(double km) => Math.Min((int)(km / sectionKm), sections.Count - 1);
+
+        var records = new ConcurrentBag<(string Id, int Section)>();
         await Parallel.ForEachAsync(Enumerable.Range(0, 200), new ParallelOptions { MaxDegreeOfParallelism = 10 }, async (i, _) =>
         {
-            var from = i * 0.1;
-            var record = await Client.CreateRecordAsync(workspace.Id, sections[i % sections.Count].Id, from, from + 0.1);
-            recordIds.Add(record.Id);
+            var from = Math.Round(i * 0.1, 3);
+            var section = SectionIndexAt(from);
+            var record = await Client.CreateRecordAsync(workspace.Id, sections[section].Id, from, from + 0.1);
+            records.Add((record.Id, section));
         });
-        var ids = recordIds.ToArray();
+        var recordList = records.ToArray();
         var random = Random.Shared;
-        string AnyId() => ids[random.Next(ids.Length)];
+        string AnyId() => recordList[random.Next(recordList.Length)].Id;
         string AnySection() => sections[random.Next(sections.Count)].Id;
+
+        // A random chainage (km) inside the given section, leaving room for a 100 m record.
+        double KmInSection(int section) => section * sectionKm + random.NextDouble() * (sectionKm - 0.1);
 
         var scenarios = new List<Scenario>
         {
@@ -45,14 +53,16 @@ public class ApiStressTests(StressTarget target, ITestOutputHelper output) : ICl
             new("GET chainage range", 15, async c => (await c.GetAsync($"{PavedRoadRecordsUrl}/chainage?chainageFrom=2&chainageTo=8")).IsSuccessStatusCode),
             new("POST record", 15, async c =>
             {
-                var from = 100 + random.NextDouble() * 50;
-                return (await c.PostAsJsonAsync(PavedRoadRecordsUrl, NewRecord(workspace.Id, AnySection(), from, from + 0.1))).StatusCode == HttpStatusCode.Created;
+                var section = random.Next(sections.Count);
+                var from = KmInSection(section);
+                return (await c.PostAsJsonAsync(PavedRoadRecordsUrl, NewRecord(workspace.Id, sections[section].Id, from, from + 0.1))).StatusCode == HttpStatusCode.Created;
             }),
             new("PUT record", 10, async c =>
             {
-                var from = random.NextDouble() * 20;
+                var (id, section) = recordList[random.Next(recordList.Length)];
+                var from = KmInSection(section);
                 var dto = new UpdatePavedRoadRecordDto { ChainageFrom = from, ChainageTo = from + 0.1, SurfaceType = SurfaceType.Asphalt, DistressType = "Rutting", Degree = random.Next(1, 6), Extent = random.Next(1, 6) };
-                return (await c.PutAsJsonAsync($"{PavedRoadRecordsUrl}/{AnyId()}", dto)).StatusCode == HttpStatusCode.OK;
+                return (await c.PutAsJsonAsync($"{PavedRoadRecordsUrl}/{id}", dto)).StatusCode == HttpStatusCode.OK;
             }),
         };
 

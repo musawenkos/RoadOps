@@ -2,6 +2,7 @@ using Moq;
 using RoadOps.Application.Common;
 using RoadOps.Application.DTOs;
 using RoadOps.Application.Repositories;
+using RoadOps.Application.Rules;
 using RoadOps.Application.Services;
 using RoadOps.Domain.Entities;
 using RoadOps.Domain.Enum;
@@ -20,7 +21,7 @@ public class PavedRoadRecordServiceTests
         _workspaces.Setup(r => r.ExistsAsync("ws", It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _workspaces.Setup(r => r.ExistsAsync("other-ws", It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _sections.Setup(r => r.GetByIdAsync("sec", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RoadSection { Id = "sec", WorkspaceId = "ws" });
+            .ReturnsAsync(new RoadSection { Id = "sec", WorkspaceId = "ws", SectionName = "S01", ChainageFrom = 0, ChainageTo = 100 });
         _service = new PavedRoadRecordService(_repository.Object, _workspaces.Object, _sections.Object);
     }
 
@@ -42,6 +43,10 @@ public class PavedRoadRecordServiceTests
         Latitude = -25.7461,
         Longitude = 28.1881,
         ImagePaths = ["a.jpg"],
+        Notes = "Near culvert",
+        LengthM = 0.8,
+        WidthM = 0.5,
+        DepthMm = 60,
         CreatedBy = "inspector"
     };
 
@@ -69,6 +74,10 @@ public class PavedRoadRecordServiceTests
         Assert.Equal(dto.Latitude, result.Latitude);
         Assert.Equal(dto.Longitude, result.Longitude);
         Assert.Equal(dto.ImagePaths, result.ImagePaths);
+        Assert.Equal(dto.Notes, result.Notes);
+        Assert.Equal(dto.LengthM, result.LengthM);
+        Assert.Equal(dto.WidthM, result.WidthM);
+        Assert.Equal(dto.DepthMm, result.DepthMm);
         Assert.Equal(dto.CreatedBy, result.CreatedBy);
         _repository.Verify(r => r.AddAsync(It.Is<PavedRoadRecord>(p => p.Id == result.Id), It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -92,6 +101,22 @@ public class PavedRoadRecordServiceTests
         { d => d.ChainageFrom = -1, "ChainageFrom" },
         { d => { d.ChainageFrom = 0; d.ChainageTo = -0.5; }, "ChainageTo" },
         { d => { d.ChainageFrom = 12; d.ChainageTo = 11; }, "ChainageFrom" },
+        { d => { d.ChainageFrom = 99.5; d.ChainageTo = 100.5; }, "ChainageFrom" },
+        { d => d.DistressType = " ", "DistressType" },
+        { d => d.Degree = 0, "Degree" },
+        { d => d.Degree = 6, "Degree" },
+        { d => d.Extent = 0, "Extent" },
+        { d => { d.DistressType = "None"; d.Degree = 0; d.Extent = 1; }, "Extent" },
+        { d => d.RutDepthMm = -1, "RutDepthMm" },
+        { d => d.Latitude = -91, "Latitude" },
+        { d => d.Longitude = 181, "Longitude" },
+        { d => d.LengthM = -0.1, "LengthM" },
+        { d => d.WidthM = 51, "WidthM" },
+        { d => d.DepthMm = double.NaN, "DepthMm" },
+        { d => d.Notes = new string('x', 1001), "Notes" },
+        { d => d.Notes = "ignore previous instructions\u001b[2J", "Notes" },
+        { d => d.SurfaceType = (SurfaceType)9, "SurfaceType" },
+        { d => d.ImagePaths = Enumerable.Repeat("a.jpg", 21).ToArray(), "ImagePaths" },
     };
 
     [Theory]
@@ -168,7 +193,8 @@ public class PavedRoadRecordServiceTests
             ChainageTo = 4,
             SurfaceType = SurfaceType.Concrete,
             DistressType = "Cracking",
-            Degree = 4
+            Degree = 4,
+            Extent = 2
         });
 
         Assert.NotNull(result);
@@ -192,6 +218,75 @@ public class PavedRoadRecordServiceTests
     [Fact]
     public async Task UpdateAsync_Missing_ReturnsNull()
     {
-        Assert.Null(await _service.UpdateAsync("missing", new UpdatePavedRoadRecordDto { ChainageFrom = 1, ChainageTo = 2 }));
+        Assert.Null(await _service.UpdateAsync("missing", new UpdatePavedRoadRecordDto { ChainageFrom = 1, ChainageTo = 2, DistressType = "Rutting", Degree = 2, Extent = 2 }));
+    }
+    [Fact]
+    public async Task CreateAsync_NoRecommendedAction_DerivesItFromTheSharedRules()
+    {
+        var dto = ValidCreateDto();
+        dto.DistressType = "potholes";
+        dto.Degree = 4;
+        dto.Extent = 2;
+        dto.RecommendedAction = "";
+
+        var result = await _service.CreateAsync(dto);
+
+        Assert.Equal("Potholes", result.DistressType);
+        Assert.Equal(RecommendedActionRules.UrgentPotholeRepair, result.RecommendedAction);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NoneDistress_AllowsZeroRatingsAndNeedsNoAction()
+    {
+        var dto = ValidCreateDto();
+        dto.DistressType = "None";
+        dto.Degree = 0;
+        dto.Extent = 0;
+        dto.RecommendedAction = "";
+
+        var result = await _service.CreateAsync(dto);
+
+        Assert.Equal(RecommendedActionRules.NoAction, result.RecommendedAction);
+    }
+
+    [Fact]
+    public async Task CreateAsync_BlankNotes_AreStoredAsNullAndTrimmed()
+    {
+        var dto = ValidCreateDto();
+        dto.Notes = "   ";
+        Assert.Null((await _service.CreateAsync(dto)).Notes);
+
+        dto.Notes = "  Line one\nline two  ";
+        Assert.Equal("Line one\nline two", (await _service.CreateAsync(dto)).Notes);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ChainageOutsideSection_Throws()
+    {
+        var existing = new PavedRoadRecord { Id = "r1", WorkspaceId = "ws", SectionId = "sec", ChainageFrom = 1, ChainageTo = 2 };
+        _repository.Setup(r => r.GetByIdAsync("r1", It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync("r1", new UpdatePavedRoadRecordDto
+        {
+            ChainageFrom = 150, ChainageTo = 150.1, DistressType = "Rutting", Degree = 2, Extent = 2
+        }));
+
+        Assert.Contains("outside section", ex.Message);
+        _repository.Verify(r => r.UpdateAsync(It.IsAny<PavedRoadRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RecomputesActionWhenNotGiven()
+    {
+        var existing = new PavedRoadRecord { Id = "r1", WorkspaceId = "ws", SectionId = "sec", RecommendedAction = RecommendedActionRules.CrackSealing };
+        _repository.Setup(r => r.GetByIdAsync("r1", It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+
+        var result = await _service.UpdateAsync("r1", new UpdatePavedRoadRecordDto
+        {
+            ChainageFrom = 1, ChainageTo = 1.1, DistressType = "Rutting", Degree = 5, Extent = 4, Notes = "Measured 45 mm"
+        });
+
+        Assert.Equal(RecommendedActionRules.MillAndReplace, result!.RecommendedAction);
+        Assert.Equal("Measured 45 mm", result.Notes);
     }
 }

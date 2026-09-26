@@ -34,6 +34,51 @@ public class PavedRoadRecordsApiTests(RoadOpsApiFactory factory)
         Assert.Equal(body.Longitude, stored.Longitude);
         Assert.Equal(body.ImagePaths, stored.ImagePaths);
         Assert.Equal(body.SurfaceType, stored.SurfaceType);
+        Assert.Equal(body.Notes, stored.Notes);
+        Assert.Equal(body.LengthM, stored.LengthM);
+        Assert.Equal(body.WidthM, stored.WidthM);
+        Assert.Equal(body.DepthMm, stored.DepthMm);
+    }
+
+    [Fact]
+    public async Task Create_WithoutRecommendedAction_AppliesTheSharedRules()
+    {
+        var workspace = await _client.CreateWorkspaceAsync();
+        var section = await _client.CreateSectionAsync(workspace.Id);
+        var body = NewRecord(workspace.Id, section.Id);
+        body.DistressType = "potholes";
+        body.Degree = 4;
+        body.RecommendedAction = "";
+
+        var created = await _client.PostAndReadAsync<PavedRoadRecordDto>(PavedRoadRecordsUrl, body);
+
+        Assert.Equal("Potholes", created.DistressType);
+        Assert.Equal("Pothole repair – urgent (within 72h)", created.RecommendedAction);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(6)]
+    public async Task Create_DegreeOutOfRange_Returns400(int degree)
+    {
+        var workspace = await _client.CreateWorkspaceAsync();
+        var section = await _client.CreateSectionAsync(workspace.Id);
+        var body = NewRecord(workspace.Id, section.Id);
+        body.Degree = degree;
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(PavedRoadRecordsUrl, body)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_OutsideItsSection_Returns400()
+    {
+        var workspace = await _client.CreateWorkspaceAsync();
+        var section = await _client.CreateSectionAsync(workspace.Id, 0, 10);
+
+        var response = await _client.PostAsJsonAsync(PavedRoadRecordsUrl, NewRecord(workspace.Id, section.Id, 12, 12.1));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("outside section", await response.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -77,14 +122,14 @@ public class PavedRoadRecordsApiTests(RoadOpsApiFactory factory)
     public async Task GetBySectionAndWorkspace_ReturnRecordsOrderedByChainage()
     {
         var workspace = await _client.CreateWorkspaceAsync();
-        var section1 = await _client.CreateSectionAsync(workspace.Id);
-        var section2 = await _client.CreateSectionAsync(workspace.Id);
-        var r3 = await _client.CreateRecordAsync(workspace.Id, section1.Id, 3.0, 3.1);
+        var section1 = await _client.CreateSectionAsync(workspace.Id, 0, 5);
+        var section2 = await _client.CreateSectionAsync(workspace.Id, 5, 10);
+        var r3 = await _client.CreateRecordAsync(workspace.Id, section2.Id, 6.0, 6.1);
         var r1 = await _client.CreateRecordAsync(workspace.Id, section1.Id, 1.0, 1.1);
-        var r2 = await _client.CreateRecordAsync(workspace.Id, section2.Id, 2.0, 2.1);
+        var r2 = await _client.CreateRecordAsync(workspace.Id, section1.Id, 2.0, 2.1);
 
         var bySection = await _client.GetPageAsync<PavedRoadRecordDto>($"{PavedRoadRecordsUrl}/section/{section1.Id}");
-        Assert.Equal([r1.Id, r3.Id], bySection.Items.Select(r => r.Id));
+        Assert.Equal([r1.Id, r2.Id], bySection.Items.Select(r => r.Id));
 
         var byWorkspace = await _client.GetPageAsync<PavedRoadRecordDto>($"{PavedRoadRecordsUrl}/workspace/{workspace.Id}");
         Assert.Equal([r1.Id, r2.Id, r3.Id], byWorkspace.Items.Select(r => r.Id));
@@ -132,7 +177,7 @@ public class PavedRoadRecordsApiTests(RoadOpsApiFactory factory)
     [Fact]
     public async Task Update_Unknown_Returns404()
     {
-        var response = await _client.PutAsJsonAsync($"{PavedRoadRecordsUrl}/{Guid.NewGuid()}", new UpdatePavedRoadRecordDto { ChainageFrom = 1, ChainageTo = 2 });
+        var response = await _client.PutAsJsonAsync($"{PavedRoadRecordsUrl}/{Guid.NewGuid()}", new UpdatePavedRoadRecordDto { ChainageFrom = 1, ChainageTo = 2, DistressType = "Rutting", Degree = 2, Extent = 2 });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

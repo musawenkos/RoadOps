@@ -18,7 +18,7 @@ Clean architecture, four projects under `src/`:
 | Project | Responsibility |
 |---|---|
 | `RoadOps.Domain` | Entities (`Workspace`, `RoadSection`, `PavedRoadRecord`) and enums. No dependencies. |
-| `RoadOps.Application` | DTOs, repository interfaces, services (validation + mapping). |
+| `RoadOps.Application` | DTOs, repository interfaces, services (validation + mapping), shared TMH9 rules (`Rules/`), condition analytics and GPS location services (`Analytics/`). |
 | `RoadOps.Infrastructure` | EF Core `RoadOpsDbContext`, entity configurations, repositories, migrations (PostgreSQL via Npgsql). |
 | `RoadOps.Api` | ASP.NET Core controllers and DI wiring. |
 
@@ -85,21 +85,21 @@ Chainage is in kilometres.
 |---|---|---|
 | `GET` | `/api/workspaces` | List workspaces (paged) |
 | `GET` | `/api/workspaces/{id}` | Get a workspace |
-| `POST` | `/api/workspaces` | Create (`name`, `assessmentType`, `createdBy` required) |
-| `PUT` | `/api/workspaces/{id}` | Update name, assessment type, status |
+| `POST` | `/api/workspaces` | Create (`name`, `assessmentType`, `corridor`, `surveyYear`, `createdBy` required) |
+| `PUT` | `/api/workspaces/{id}` | Update name, assessment type, corridor, survey year, status |
 | `DELETE` | `/api/workspaces/{id}` | Delete (cascades) |
 | `GET` | `/api/road-sections` | List sections (paged) |
 | `GET` | `/api/road-sections/{id}` | Get a section |
 | `GET` | `/api/road-sections/workspace/{workspaceId}` | Sections in a workspace (paged) |
-| `POST` | `/api/road-sections` | Create (`sectionName`, `workspaceId`, `createdBy` required; workspace must exist) |
-| `PUT` | `/api/road-sections/{id}` | Rename |
+| `POST` | `/api/road-sections` | Create (`sectionName`, `workspaceId`, `chainageFrom`, `chainageTo`, `createdBy` required; workspace must exist) |
+| `PUT` | `/api/road-sections/{id}` | Rename and/or change the km range |
 | `DELETE` | `/api/road-sections/{id}` | Delete (cascades) |
 | `GET` | `/api/paved-road-records` | List records (paged, oldest first) |
 | `GET` | `/api/paved-road-records/{id}` | Get a record |
 | `GET` | `/api/paved-road-records/workspace/{workspaceId}` | Records in a workspace, by chainage (paged) |
 | `GET` | `/api/paved-road-records/section/{sectionId}` | Records in a section, by chainage (paged) |
 | `GET` | `/api/paved-road-records/chainage?chainageFrom=&chainageTo=&workspaceId=` | Records lying fully inside a chainage range; `workspaceId` optional (paged) |
-| `POST` | `/api/paved-road-records` | Create a record (workspace and section must exist, and the section must belong to the workspace) |
+| `POST` | `/api/paved-road-records` | Create a record (workspace and section must exist, the section must belong to the workspace, and the record must lie inside the section's km range) |
 | `PUT` | `/api/paved-road-records/{id}` | Update a record |
 | `DELETE` | `/api/paved-road-records/{id}` | Delete a record |
 
@@ -121,6 +121,15 @@ Every list endpoint takes `page` (1-based, default `1`) and `pageSize` (default 
 
 Ordering is stable (ties are broken by id), so walking pages never skips or repeats a record. A page past the end returns
 empty `items` with the real `totalCount`. Chainage lists are ordered by `chainageFrom`, other lists by creation time.
+
+### Validation rules
+
+| Entity | Rule |
+|---|---|
+| Workspace | `corridor` is 1–12 letters/digits, stored upper-case (`"n1"` → `"N1"`); `surveyYear` is 1990–2100. Surveys of the same corridor can be compared. |
+| Road section | `chainageFrom` < `chainageTo` (km, non-negative). Sections of one workspace must not overlap (touching ends are fine). A range change must still contain the section's records. |
+| Record | Inside its section's km range. `distressType` required; catalogue names are matched case-insensitively and stored in catalogue spelling. `degree`/`extent` are 1–5, or both 0 when `distressType` is `"None"`. `rutDepthMm` 0–200, valid latitude/longitude. Optional on-site measurements `lengthM` (0–1000), `widthM` (0–50), `depthMm` (0–500). `notes` up to 1000 characters, no control characters. At most 20 image paths. |
+| Record | Leave `recommendedAction` empty and it is derived from distress, degree and extent by the shared TMH9 rules (`RecommendedActionRules`, also used by the seeder). A non-empty value is kept as an engineer's override. |
 
 ### Errors
 
@@ -211,7 +220,10 @@ The seeder refuses to run on a non-empty database unless you pass `--reset`.
 Tables and columns use PostgreSQL snake_case (`paved_road_records.chainage_from`) via
 [EFCore.NamingConventions](https://github.com/efcore/EFCore.NamingConventions), configured in `RoadOpsDbContext`.
 Composite indexes on `(workspace_id, chainage_from)`, `(section_id, chainage_from)` and `(workspace_id, created_at)`
-back the paged queries.
+back the paged queries. `road_sections (workspace_id, chainage_from)` serves chainage-to-section lookups,
+`workspaces (corridor, survey_year)` survey pairing, and `paved_road_records (latitude, longitude)` the bounding-box
+prefilter of nearest-observation (GPS) lookups. Condition summaries, worst stretches, survey comparison and the repair
+backlog are computed with SQL `GROUP BY` in `ConditionAnalyticsRepository`; records are never paged into memory to be counted.
 
 ### Migrations
 
