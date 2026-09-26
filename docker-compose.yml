@@ -1,0 +1,18 @@
+services:
+  postgres:
+    build:
+      context: ./docker/postgres
+    image: roadops-postgres:16
+    container_name: roadops-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-roadops}
+      POSTGRES_USER: ${POSTGRES_USER:-roadops_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-roadops_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - roadops-pgdata:/var/lib/postgresql/data
+
+volumes:
+  roadops-pgdata:

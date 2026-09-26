@@ -1,0 +1,60 @@
+@host = http://localhost:5277
+@workspaceId = replace-with-a-workspace-id
+@sectionId = replace-with-a-section-id
+
+### List workspaces (paged: page defaults to 1, pageSize to 50, max 500)
+GET {{host}}/api/workspaces?page=1&pageSize=20
+Accept: application/json
+
+### Create a workspace
+POST {{host}}/api/workspaces
+Content-Type: application/json
+
+{
+  "name": "N1 Pretoria – Polokwane · VCI 2026",
+  "assessmentType": "Visual Condition Assessment (TMH9)",
+  "createdBy": "inspector"
+}
+
+### Sections in a workspace
+GET {{host}}/api/road-sections/workspace/{{workspaceId}}?page=1&pageSize=50
+
+### Create a road section
+POST {{host}}/api/road-sections
+Content-Type: application/json
+
+{
+  "sectionName": "N1 S01: km 0.0–25.0 (Pretoria)",
+  "workspaceId": "{{workspaceId}}",
+  "createdBy": "inspector"
+}
+
+### Records in a section, ordered by chainage
+GET {{host}}/api/paved-road-records/section/{{sectionId}}?page=1&pageSize=100
+
+### Records inside a chainage range (km), limited to one workspace
+GET {{host}}/api/paved-road-records/chainage?chainageFrom=40&chainageTo=41&workspaceId={{workspaceId}}
+
+### Create a paved road record
+POST {{host}}/api/paved-road-records
+Content-Type: application/json
+
+{
+  "workspaceId": "{{workspaceId}}",
+  "sectionId": "{{sectionId}}",
+  "chainageFrom": 10.0,
+  "chainageTo": 10.1,
+  "surfaceType": 0,
+  "distressType": "Potholes",
+  "degree": 3,
+  "extent": 2,
+  "rutDepthMm": 15.5,
+  "ridingQuality": "Poor",
+  "skidResistance": "Fair",
+  "stdRef": "TMH9 Part B (Flexible)",
+  "recommendedAction": "Pothole repair – urgent (within 72h)",
+  "latitude": -25.7461,
+  "longitude": 28.1881,
+  "imagePaths": [],
+  "createdBy": "inspector"
+}
