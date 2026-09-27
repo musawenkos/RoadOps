@@ -1,5 +1,6 @@
 using RoadOps.Application.DTOs;
 using RoadOps.Application.Rules;
+using RoadOps.Domain.Enum;
 
 namespace RoadOps.Application.Analytics;
 
@@ -97,6 +98,7 @@ public sealed record LocationFix(
     SectionRef? Section,
     double ChainageKm,
     double DistanceFromRoadM,
-    int ReferenceSurveyYear);
+    int ReferenceSurveyYear,
+    SurfaceType SurfaceType);
 
 public sealed record LocationDetails(WorkspaceOverview Survey, SectionRef? Section, double ChainageKm, LocationFix? Fix, IReadOnlyList<PavedRoadRecordDto> Observations);

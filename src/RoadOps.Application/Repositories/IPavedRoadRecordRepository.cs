@@ -16,6 +16,9 @@ public interface IPavedRoadRecordRepository
     /// <summary>The lowest ChainageFrom and highest ChainageTo of the section's records, or null if it has none.</summary>
     Task<(double From, double To)?> GetChainageExtentBySectionAsync(string sectionId, CancellationToken cancellationToken = default);
 
+    /// <summary>The most recent (non-voided) record created by <paramref name="createdBy"/> since <paramref name="since"/>.</summary>
+    Task<PavedRoadRecord?> GetLatestByCreatorAsync(string createdBy, DateTimeOffset since, CancellationToken cancellationToken = default);
+
     Task AddAsync(PavedRoadRecord record, CancellationToken cancellationToken = default);
     Task UpdateAsync(PavedRoadRecord record, CancellationToken cancellationToken = default);
     Task DeleteAsync(string id, CancellationToken cancellationToken = default);

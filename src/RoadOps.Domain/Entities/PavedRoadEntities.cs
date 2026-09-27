@@ -34,6 +34,10 @@ public sealed class PavedRoadRecord
     public double? WidthM { get; set; }
     public double? DepthMm { get; set; }
 
+    /// <summary>Set when the observation was withdrawn (soft void). Voided records are excluded from every query.</summary>
+    public DateTimeOffset? VoidedAt { get; set; }
+    public string? VoidedBy { get; set; }
+
     public string CreatedBy { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

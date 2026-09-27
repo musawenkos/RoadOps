@@ -21,6 +21,7 @@ Clean architecture, four projects under `src/`:
 | `RoadOps.Application` | DTOs, repository interfaces, services (validation + mapping), shared TMH9 rules (`Rules/`), condition analytics and GPS location services (`Analytics/`). |
 | `RoadOps.Infrastructure` | EF Core `RoadOpsDbContext`, entity configurations, repositories, migrations (PostgreSQL via Npgsql). |
 | `RoadOps.Api` | ASP.NET Core controllers and DI wiring. |
+| `RoadOps.Mcp` | MCP server (Streamable HTTP) exposing agent tools, API-key auth and photo upload. See [MCP server](#mcp-server-alexa-agent-tools). |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the dependency graph, CRUD map and a full request trace.
 
@@ -74,6 +75,72 @@ dotnet run --project tools/RoadOps.DataSeeder
 ```
 
 See [Synthetic data](#synthetic-data) below.
+
+## MCP server (Alexa+ agent tools)
+
+`src/RoadOps.Mcp` is a Model Context Protocol server over **Streamable HTTP** (official C# SDK
+`ModelContextProtocol.AspNetCore` 2.2.0, protocol revisions **2025-11-25** and 2026-07-28, stateless mode). It uses the
+same Application services and database as the REST API. The tools are domain-level: they take corridor, year, section
+names, km and GPS instead of ids, and return short summaries meant to be spoken aloud.
+
+### Run it
+
+1. Create an API key for each inspector and store only its SHA-256 hash (user secrets, never the repo):
+
+   ```powershell
+   $hash = dotnet run --project src/RoadOps.Mcp --no-launch-profile -- hash-key "<a long random key>"
+   dotnet user-secrets --project src/RoadOps.Mcp set "Mcp:ApiKeys:0:User" "t.mokoena"
+   dotnet user-secrets --project src/RoadOps.Mcp set "Mcp:ApiKeys:0:KeyHash" $hash
+   ```
+
+   In other environments use environment variables (`Mcp__ApiKeys__0__User`, `Mcp__ApiKeys__0__KeyHash`).
+   The user name is what gets recorded as `CreatedBy`; tools never accept it as an argument.
+
+2. Start PostgreSQL (`docker compose up -d`) and the server:
+
+   ```bash
+   dotnet run --project src/RoadOps.Mcp --launch-profile http
+   ```
+
+   MCP endpoint: `http://localhost:5288/mcp`. Health check: `GET /health` (no auth). Every other route requires
+   `Authorization: Bearer <key>` (or `X-Api-Key: <key>`).
+
+3. Connect a client, e.g. MCP Inspector: `npx @modelcontextprotocol/inspector`, transport **Streamable HTTP**,
+   URL `http://localhost:5288/mcp`, and add the header `Authorization: Bearer <key>`.
+
+### Tools
+
+| Tool | Kind | Purpose |
+|---|---|---|
+| `find_surveys` | read | Surveys by corridor/year/name/status, with section and observation counts |
+| `list_sections` | read | Sections of a survey with km ranges, counts, average degree, % poor |
+| `get_condition_summary` | read | Survey, section or km range: degree distribution, top distresses, rut depth, riding quality, % poor |
+| `find_worst_stretches` | read | Ranked km stretches by severity, rutting or riding quality, with dominant distress and recommended action |
+| `compare_surveys` | read | Per km band between two surveys of a corridor: deteriorated / stable / rehabilitated |
+| `get_location_details` | read | Observations at a km or GPS point (distress, degree, extent, measurements, photos, GPS) |
+| `get_repair_backlog` | read | Recommended actions grouped and counted, urgent first, with urgent locations |
+| `locate_position` | read | GPS → survey, section and km ("where am I?") |
+| `list_distress_types` | read | The accepted TMH9 distress names |
+| `log_observation` | write | Log from GPS (or km) + distress + degree + extent (+ rut depth, measurements, notes). Returns what is missing or a read-back; saves only with `confirm=true` |
+| `attach_photo` | write | Attach an uploaded photo to an observation (default: your latest) |
+| `update_observation` | write, destructive | Add or correct measurements, notes, degree or extent on your own observation |
+| `void_observation` | write, destructive | Soft-void your own observation within 10 minutes of logging it |
+
+There are no delete tools, and surveys and sections can only be created or renamed through the REST API.
+
+### Photos
+
+Photos never pass through the agent. The field app uploads the image over plain HTTP and passes the returned id to
+`attach_photo`:
+
+```bash
+curl -H "Authorization: Bearer <key>" -F "file=@pothole.jpg" http://localhost:5288/uploads/photos
+# 201 {"photoId":"3f2c…","contentType":"image/jpeg","sizeBytes":123456,"sha256":"…"}
+```
+
+Only JPEG, PNG and WebP are accepted, detected from the file's bytes (the name and declared type are ignored), up to
+10 MB. Files are stored under server-generated names in `PhotoStorage:RootPath` (default `src/RoadOps.Mcp/data/photos`,
+git-ignored). `GET /photos/{photoId}` returns a photo.
 
 ## API
 
@@ -240,6 +307,6 @@ dotnet ef database update      --project src/RoadOps.Infrastructure --startup-pr
 ├── docs/ARCHITECTURE.md
 ├── scripts/run-tests.ps1       # Test runner
 ├── src/                        # Domain, Application, Infrastructure, Api
-├── tests/                      # Unit, integration, stress
+├── tests/                      # Unit, integration (API and MCP), stress
 └── tools/RoadOps.DataSeeder/   # Synthetic data generator
 ```

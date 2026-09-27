@@ -67,6 +67,16 @@ public class PavedRoadRecordRepository : IPavedRoadRecordRepository
         return extent is null ? null : (extent.From, extent.To);
     }
 
+    public async Task<PavedRoadRecord?> GetLatestByCreatorAsync(string createdBy, DateTimeOffset since, CancellationToken cancellationToken = default)
+    {
+        return await _context.PavedRoadRecords
+            .AsNoTracking()
+            .Where(pr => pr.CreatedBy == createdBy && pr.CreatedAt >= since)
+            .OrderByDescending(pr => pr.CreatedAt)
+            .ThenByDescending(pr => pr.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     // Several records can share a chainage (one per distress), so Id breaks ties to keep pages stable.
     private static IQueryable<PavedRoadRecord> OrderByChainage(IQueryable<PavedRoadRecord> query) =>
         query.AsNoTracking()
@@ -88,7 +98,9 @@ public class PavedRoadRecordRepository : IPavedRoadRecordRepository
 
     public async Task DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
+        // Hard delete (REST admin) also removes voided records.
         var record = await _context.PavedRoadRecords
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(pr => pr.Id == id, cancellationToken);
 
         if (record != null)

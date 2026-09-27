@@ -64,7 +64,8 @@ public class SurveyLocationService
             section is null ? null : new SectionRef(section.Id, section.SectionName, section.ChainageFrom, section.ChainageTo),
             km,
             Math.Round(nearest.DistanceM, 1),
-            nearest.SurveyYear);
+            nearest.SurveyYear,
+            nearest.SurfaceType);
     }
 
     /// <summary>Observations of a survey at a km, or at a GPS position (resolved with <see cref="LocateAsync"/>).</summary>

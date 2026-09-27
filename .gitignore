@@ -167,3 +167,9 @@ $RECYCLE.BIN/
 
 # Test output
 TestResults/
+
+# Uploaded photos (local photo storage)
+src/RoadOps.Mcp/data/
+
+# Local documentation (e.g. generated guides). Files already tracked, like docs/ARCHITECTURE.md, stay tracked.
+docs/

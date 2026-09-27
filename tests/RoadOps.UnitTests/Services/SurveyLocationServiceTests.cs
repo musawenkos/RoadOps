@@ -26,7 +26,7 @@ public class SurveyLocationServiceTests
 
     // Two 2024 points along a north-south line: km 10.05 at -25.000 and km 10.15 at -25.001 (about 111 m apart).
     private static NearbyRecord Point(double lat, double km, double distance, string workspace = "ws24") =>
-        new($"r{km}", workspace, "s24", "N1", 2024, km - 0.05, km + 0.05, lat, 28.0, distance);
+        new($"r{km}", workspace, "s24", "N1", 2024, km - 0.05, km + 0.05, lat, 28.0, SurfaceType.Asphalt, distance);
 
     [Fact]
     public async Task Locate_WithoutSurvey_UsesNearestCorridorsActiveSurveyAndInterpolatesChainage()

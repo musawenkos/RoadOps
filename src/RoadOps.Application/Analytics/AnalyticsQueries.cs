@@ -79,4 +79,5 @@ public sealed record NearbyRecord(
     double ChainageTo,
     double Latitude,
     double Longitude,
+    SurfaceType SurfaceType,
     double DistanceM);

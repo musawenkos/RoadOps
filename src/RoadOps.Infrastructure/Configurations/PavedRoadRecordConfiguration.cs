@@ -74,6 +74,9 @@ public class PavedRoadRecordConfiguration : IEntityTypeConfiguration<PavedRoadRe
         builder.Property(pr => pr.WidthM);
         builder.Property(pr => pr.DepthMm);
 
+        builder.Property(pr => pr.VoidedBy)
+            .HasMaxLength(255);
+
         builder.Property(pr => pr.CreatedBy)
             .HasMaxLength(255)
             .IsRequired();
@@ -93,6 +96,11 @@ public class PavedRoadRecordConfiguration : IEntityTypeConfiguration<PavedRoadRe
         builder.HasIndex(pr => pr.DistressType);
         // Bounding-box prefilter for nearest-observation lookups from GPS.
         builder.HasIndex(pr => new { pr.Latitude, pr.Longitude });
+        // "My latest observation" lookups for the field tools.
+        builder.HasIndex(pr => new { pr.CreatedBy, pr.CreatedAt });
+
+        // Voided observations are withdrawn: every query ignores them unless it opts out with IgnoreQueryFilters().
+        builder.HasQueryFilter(pr => pr.VoidedAt == null);
 
         builder.HasOne<Workspace>()
             .WithMany()

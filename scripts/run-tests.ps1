@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Runs the RoadOps test suites (unit, integration, stress) and prints a summary.
 
@@ -12,12 +12,13 @@
 .EXAMPLE
     ./scripts/run-tests.ps1
     ./scripts/run-tests.ps1 -Suite unit
+    ./scripts/run-tests.ps1 -Suite mcp        # MCP server tools end to end (Docker)
     ./scripts/run-tests.ps1 -Suite stress -StressDuration 60 -StressConcurrency 50
     ./scripts/run-tests.ps1 -Suite stress -StressBaseUrl http://localhost:5277
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('all', 'unit', 'integration', 'stress')]
+    [ValidateSet('all', 'unit', 'integration', 'mcp', 'stress')]
     [string]$Suite = 'all',
     [int]$StressDuration = 20,
     [int]$StressConcurrency = 25,
@@ -36,6 +37,7 @@ New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
 $suites = [ordered]@{
     unit        = 'tests\RoadOps.UnitTests\RoadOps.UnitTests.csproj'
     integration = 'tests\RoadOps.IntegrationTests\RoadOps.IntegrationTests.csproj'
+    mcp         = 'tests\RoadOps.Mcp.IntegrationTests\RoadOps.Mcp.IntegrationTests.csproj'
     stress      = 'tests\RoadOps.StressTests\RoadOps.StressTests.csproj'
 }
 $selected = if ($Suite -eq 'all') { @($suites.Keys) } else { @($Suite) }
@@ -52,7 +54,7 @@ Write-Section 'Pre-flight checks'
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { throw 'The .NET SDK (dotnet) is not on PATH.' }
 Write-Host "dotnet $(dotnet --version)"
 
-$needsDocker = ($selected -contains 'integration' -and -not $env:ROADOPS_TEST_CONNECTION) -or
+$needsDocker = (($selected -contains 'integration' -or $selected -contains 'mcp') -and -not $env:ROADOPS_TEST_CONNECTION) -or
                ($selected -contains 'stress' -and -not $StressBaseUrl -and -not $env:ROADOPS_TEST_CONNECTION)
 if ($needsDocker) {
     docker info --format '{{.ServerVersion}}' 2>$null | Out-Null

@@ -249,13 +249,13 @@ public class ConditionAnalyticsRepository : IConditionAnalyticsRepository
             .Select(x => new
             {
                 x.r.Id, x.r.WorkspaceId, x.r.SectionId, x.Corridor, x.SurveyYear,
-                x.r.ChainageFrom, x.r.ChainageTo, x.r.Latitude, x.r.Longitude,
+                x.r.ChainageFrom, x.r.ChainageTo, x.r.Latitude, x.r.Longitude, x.r.SurfaceType,
             })
             .ToListAsync(cancellationToken);
 
         return rows
             .Select(x => new NearbyRecord(x.Id, x.WorkspaceId, x.SectionId, x.Corridor, x.SurveyYear, x.ChainageFrom, x.ChainageTo,
-                x.Latitude, x.Longitude, Geo.DistanceM(lat, lon, x.Latitude, x.Longitude)))
+                x.Latitude, x.Longitude, x.SurfaceType, Geo.DistanceM(lat, lon, x.Latitude, x.Longitude)))
             .Where(x => x.DistanceM <= query.RadiusM)
             .OrderBy(x => x.DistanceM)
             .ToList();
