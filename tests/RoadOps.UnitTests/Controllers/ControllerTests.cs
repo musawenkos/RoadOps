@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using RoadOps.Api.Controllers;
@@ -19,9 +21,17 @@ public class ControllerTests
     private readonly Mock<IRoadSectionRepository> _sections = new();
     private readonly Mock<IPavedRoadRecordRepository> _records = new();
 
-    private WorkspacesController CreateWorkspacesController() => new(new WorkspaceService(_workspaces.Object));
-    private RoadSectionsController CreateSectionsController() => new(new RoadSectionService(_sections.Object, _workspaces.Object, _records.Object));
-    private PavedRoadRecordsController CreateRecordsController() => new(new PavedRoadRecordService(_records.Object, _workspaces.Object, _sections.Object));
+    private WorkspacesController CreateWorkspacesController() => SignedIn(new WorkspacesController(new WorkspaceService(_workspaces.Object)));
+    private RoadSectionsController CreateSectionsController() => SignedIn(new RoadSectionsController(new RoadSectionService(_sections.Object, _workspaces.Object, _records.Object)));
+    private PavedRoadRecordsController CreateRecordsController() => SignedIn(new PavedRoadRecordsController(new PavedRoadRecordService(_records.Object, _workspaces.Object, _sections.Object)));
+
+    /// <summary>Controllers read the creator from the authenticated user, as the API-key middleware sets it.</summary>
+    private static T SignedIn<T>(T controller) where T : ControllerBase
+    {
+        var identity = new ClaimsIdentity([new Claim(ClaimTypes.Name, "u")], "ApiKey");
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) } };
+        return controller;
+    }
 
     [Fact]
     public async Task Workspaces_Create_Valid_Returns201WithLocationRoute()
@@ -41,7 +51,7 @@ public class ControllerTests
         var response = await CreateWorkspacesController().Create(new CreateWorkspaceDto(), CancellationToken.None);
 
         var bad = Assert.IsType<BadRequestObjectResult>(response.Result);
-        Assert.Contains("Workspace name is required", bad.Value!.ToString());
+        Assert.Equal("Workspace name is required.", bad.Value); // no " (Parameter 'Name')" suffix
     }
 
     [Fact]

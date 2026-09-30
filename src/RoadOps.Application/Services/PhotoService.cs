@@ -8,7 +8,8 @@ namespace RoadOps.Application.Services;
 
 /// <summary>
 /// Accepts photo uploads from the field app. The type is taken from the file's magic bytes (JPEG, PNG or WebP only),
-/// the size is capped, and the storage name is generated here, so nothing about the stored file comes from the client.
+/// the size is capped, metadata such as the EXIF GPS position and device details is stripped, and the storage name is
+/// generated here, so nothing about the stored file comes from the client.
 /// </summary>
 public class PhotoService
 {
@@ -54,6 +55,7 @@ public class PhotoService
         var bytes = buffer.GetBuffer().AsSpan(0, (int)buffer.Length);
         var format = PhotoFormats.Detect(bytes[..Math.Min(bytes.Length, PhotoFormats.HeaderLength)])
             ?? throw new ArgumentException("Only JPEG, PNG and WebP photos are accepted.", nameof(content));
+        var clean = PhotoMetadata.Strip(bytes, format);
 
         var now = _time.GetUtcNow();
         var id = Guid.NewGuid().ToString("N");
@@ -62,14 +64,13 @@ public class PhotoService
             Id = id,
             StorageKey = $"{now:yyyy}/{now:MM}/{id}.{format.Extension}",
             ContentType = format.ContentType,
-            SizeBytes = buffer.Length,
-            Sha256 = Convert.ToHexStringLower(SHA256.HashData(bytes)),
+            SizeBytes = clean.Length,
+            Sha256 = Convert.ToHexStringLower(SHA256.HashData(clean)),
             UploadedBy = caller,
             UploadedAt = now,
         };
 
-        buffer.Position = 0;
-        await _storage.SaveAsync(photo.StorageKey, buffer, cancellationToken);
+        await _storage.SaveAsync(photo.StorageKey, new MemoryStream(clean, writable: false), cancellationToken);
         try
         {
             await _photos.AddAsync(photo, cancellationToken);

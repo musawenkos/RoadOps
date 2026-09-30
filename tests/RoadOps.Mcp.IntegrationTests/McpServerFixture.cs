@@ -1,13 +1,15 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using RoadOps.Application.Rules;
 using RoadOps.Domain.Entities;
 using RoadOps.Domain.Enum;
 using RoadOps.Infrastructure.Data;
-using RoadOps.Mcp.Auth;
+using RoadOps.Auth;
 using RoadOps.Tests.Shared;
 
 namespace RoadOps.Mcp.IntegrationTests;
@@ -21,6 +23,9 @@ public sealed class McpServerFactory : PostgresAppFactory<Program>
 {
     public const string AliceKey = "alice-test-key";
     public const string BobKey = "bob-test-key";
+
+    /// <summary>A key with no role configured, so a reader: read tools and photo downloads only.</summary>
+    public const string CarolKey = "carol-test-key";
     public const double DegreesPerKm = 1 / 111.32;
 
     public string PhotoRoot { get; } = Path.Combine(Path.GetTempPath(), "roadops-mcp-tests-" + Guid.NewGuid().ToString("N"));
@@ -32,10 +37,19 @@ public sealed class McpServerFactory : PostgresAppFactory<Program>
         base.ConfigureWebHost(builder);
         builder.UseSetting("Mcp:ApiKeys:0:User", "alice");
         builder.UseSetting("Mcp:ApiKeys:0:KeyHash", ApiKeyAuthenticationHandler.Hash(AliceKey));
+        builder.UseSetting("Mcp:ApiKeys:0:Role", ApiKeyRoles.Editor);
         builder.UseSetting("Mcp:ApiKeys:1:User", "bob");
         builder.UseSetting("Mcp:ApiKeys:1:KeyHash", ApiKeyAuthenticationHandler.Hash(BobKey));
+        builder.UseSetting("Mcp:ApiKeys:1:Role", ApiKeyRoles.Editor);
+        builder.UseSetting("Mcp:ApiKeys:2:User", "carol");
+        builder.UseSetting("Mcp:ApiKeys:2:KeyHash", ApiKeyAuthenticationHandler.Hash(CarolKey));
         builder.UseSetting("PhotoStorage:RootPath", PhotoRoot);
+        builder.UseSetting("Logging:LogLevel:RoadOps.Audit", "Information");
+        builder.ConfigureServices(services => services.AddSingleton<ILoggerProvider>(Logs));
     }
+
+    /// <summary>Everything the server logs at Warning or above (the base factory's minimum level), plus the audit log.</summary>
+    public LogSink Logs { get; } = new();
 
     public static (double Lat, double Lon) PositionAtKm(double km) => (-25.0 - km * DegreesPerKm, 28.0);
 
@@ -135,6 +149,31 @@ public sealed class McpCollection : ICollectionFixture<McpServerFixture>
 {
     public const string Name = "RoadOps MCP";
 }
+
+public sealed class LogSink : ILoggerProvider
+{
+    private readonly ConcurrentQueue<LogEntry> _entries = new();
+
+    public IReadOnlyList<LogEntry> Entries => [.. _entries];
+
+    public void Clear() => _entries.Clear();
+
+    public ILogger CreateLogger(string categoryName) => new Logger(categoryName, _entries);
+
+    public void Dispose() { }
+
+    private sealed class Logger(string category, ConcurrentQueue<LogEntry> entries) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            entries.Enqueue(new LogEntry(category, logLevel, formatter(state, exception), exception));
+    }
+}
+
+public sealed record LogEntry(string Category, LogLevel Level, string Message, Exception? Exception);
 
 internal static class ToolResults
 {

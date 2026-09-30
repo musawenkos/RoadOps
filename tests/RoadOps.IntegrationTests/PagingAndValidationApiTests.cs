@@ -62,7 +62,19 @@ public class PagingAndValidationApiTests(RoadOpsApiFactory factory)
     [InlineData(PavedRoadRecordsUrl + "/chainage?chainageFrom=0&chainageTo=1&pageSize=0")]
     public async Task Paging_InvalidParameters_Return400(string url)
     {
-        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync(url)).StatusCode);
+        var response = await _client.GetAsync(url);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.DoesNotContain("(Parameter '", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task ValidationErrors_ReturnOnlyTheMessage()
+    {
+        var response = await _client.PostAsJsonAsync(WorkspacesUrl, new CreateWorkspaceDto());
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("Workspace name is required.", await response.Content.ReadAsStringAsync());
     }
 
     [Fact]

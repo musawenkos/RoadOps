@@ -103,14 +103,17 @@ internal static class ToolGuard
         }
         catch (ArgumentException ex)
         {
-            throw new McpException(CleanMessage(ex));
+            throw new ToolInputException(ex.UserMessage());
         }
         catch (RuleViolationException ex)
         {
-            throw new McpException(ex.Message);
+            throw new ToolInputException(ex.Message);
         }
     }
-
-    private static string CleanMessage(ArgumentException ex) =>
-        ex.ParamName is null ? ex.Message : ex.Message.Replace($" (Parameter '{ex.ParamName}')", string.Empty);
 }
+
+/// <summary>
+/// An expected failure caused by the caller's input (bad value, missing survey, not their observation). Handled by
+/// <see cref="ToolErrorFilter"/> as a tool error rather than logged by the SDK as an unhandled exception.
+/// </summary>
+internal sealed class ToolInputException(string message) : McpException(message);

@@ -1,46 +1,54 @@
 @host = http://localhost:5277
+# Your API key (see README: Api:ApiKeys). CreatedBy is taken from the key.
+# Reads need any key; POST/PUT need an editor or admin key; DELETE needs an admin key.
+@apiKey = replace-with-your-api-key
 @workspaceId = replace-with-a-workspace-id
 @sectionId = replace-with-a-section-id
 
 ### List workspaces (paged: page defaults to 1, pageSize to 50, max 500)
 GET {{host}}/api/workspaces?page=1&pageSize=20
+Authorization: Bearer {{apiKey}}
 Accept: application/json
 
 ### Create a workspace
 POST {{host}}/api/workspaces
+Authorization: Bearer {{apiKey}}
 Content-Type: application/json
 
 {
   "name": "N1 Pretoria – Polokwane · VCI 2026",
   "assessmentType": "Visual Condition Assessment (TMH9)",
   "corridor": "N1",
-  "surveyYear": 2026,
-  "createdBy": "inspector"
+  "surveyYear": 2026
 }
 
 ### Sections in a workspace
 GET {{host}}/api/road-sections/workspace/{{workspaceId}}?page=1&pageSize=50
+Authorization: Bearer {{apiKey}}
 
 ### Create a road section
 POST {{host}}/api/road-sections
+Authorization: Bearer {{apiKey}}
 Content-Type: application/json
 
 {
-  "sectionName": "N1 S01: km 0.0–25.0 (Pretoria)",
+  "sectionName": "N1 S01 (Pretoria)",
   "workspaceId": "{{workspaceId}}",
   "chainageFrom": 0.0,
-  "chainageTo": 25.0,
-  "createdBy": "inspector"
+  "chainageTo": 25.0
 }
 
 ### Records in a section, ordered by chainage
 GET {{host}}/api/paved-road-records/section/{{sectionId}}?page=1&pageSize=100
+Authorization: Bearer {{apiKey}}
 
 ### Records inside a chainage range (km), limited to one workspace
 GET {{host}}/api/paved-road-records/chainage?chainageFrom=40&chainageTo=41&workspaceId={{workspaceId}}
+Authorization: Bearer {{apiKey}}
 
 ### Create a paved road record
 POST {{host}}/api/paved-road-records
+Authorization: Bearer {{apiKey}}
 Content-Type: application/json
 
 {
@@ -63,6 +71,5 @@ Content-Type: application/json
   "notes": "Water ponding in the wheel path after rain.",
   "lengthM": 0.8,
   "widthM": 0.5,
-  "depthMm": 60,
-  "createdBy": "inspector"
+  "depthMm": 60
 }

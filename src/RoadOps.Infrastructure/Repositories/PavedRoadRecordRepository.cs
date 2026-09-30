@@ -62,7 +62,7 @@ public class PavedRoadRecordRepository : IPavedRoadRecordRepository
             .Where(pr => pr.SectionId == sectionId)
             .GroupBy(_ => 1)
             .Select(g => new { From = g.Min(pr => pr.ChainageFrom), To = g.Max(pr => pr.ChainageTo) })
-            .FirstOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken); // One group, so at most one row (no records: none).
 
         return extent is null ? null : (extent.From, extent.To);
     }

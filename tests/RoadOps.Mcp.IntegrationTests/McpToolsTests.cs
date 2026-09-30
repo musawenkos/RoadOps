@@ -1,9 +1,11 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using RoadOps.Infrastructure.Data;
 
@@ -19,7 +21,9 @@ public partial class McpToolsTests(McpServerFixture fixture)
     [GeneratedRegex(@"ID ([0-9a-f\-]{36})")]
     private static partial Regex ObservationId();
 
-    private static readonly byte[] TinyJpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0xFF, 0xD9];
+    // SOI, a complete APP0 (JFIF) segment, EOI: the smallest file the upload's JPEG structure check accepts unchanged.
+    private static readonly byte[] TinyJpeg =
+        [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xD9];
 
     private static Dictionary<string, object?> Args(params (string Key, object? Value)[] pairs) => pairs.ToDictionary(p => p.Key, p => p.Value);
 
@@ -43,6 +47,32 @@ public partial class McpToolsTests(McpServerFixture fixture)
         Assert.True(tools["update_observation"]!.DestructiveHint);
         Assert.True(tools["void_observation"]!.DestructiveHint);
         Assert.DoesNotContain(tools.Keys, name => name.Contains("delete"));
+    }
+
+    [Fact]
+    public async Task ListTools_UsesASingleTypePerParameter()
+    {
+        await using var client = await Factory.ConnectAsync(McpServerFactory.AliceKey);
+
+        var parameters = (await client.ListToolsAsync())
+            .SelectMany(t => t.ProtocolTool.InputSchema.GetProperty("properties").EnumerateObject().Select(p => (Name: $"{t.Name}.{p.Name}", Schema: p.Value)))
+            .ToList();
+
+        Assert.NotEmpty(parameters);
+        Assert.All(parameters, p => Assert.Equal(JsonValueKind.String, p.Schema.GetProperty("type").ValueKind));
+        Assert.DoesNotContain(parameters, p => p.Schema.TryGetProperty("default", out var d) && d.ValueKind == JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task OptionalParameters_AcceptAnExplicitNullLikeAnOmittedValue()
+    {
+        await using var client = await Factory.ConnectAsync(McpServerFactory.AliceKey);
+
+        var omitted = await client.CallToolAsync("find_surveys", Args(("corridor", Corridor)));
+        var explicitNull = await client.CallToolAsync("find_surveys", Args(("corridor", Corridor), ("year", null), ("status", null)));
+
+        Assert.NotEqual(true, explicitNull.IsError);
+        Assert.Equal(omitted.Text(), explicitNull.Text());
     }
 
     [Theory]
@@ -170,6 +200,24 @@ public partial class McpToolsTests(McpServerFixture fixture)
     }
 
     [Fact]
+    public async Task RejectedInput_IsLoggedAsAWarningWithoutAStackTrace()
+    {
+        await using var client = await Factory.ConnectAsync(McpServerFactory.AliceKey);
+        var (lat, lon) = McpServerFactory.PositionAtKm(0.5);
+        Factory.Logs.Clear();
+
+        var badDegree = await client.CallToolAsync("log_observation", Args(("latitude", lat), ("longitude", lon), ("distressType", "Potholes"), ("degree", 9), ("extent", 1)));
+
+        Assert.True(badDegree.IsError);
+        Assert.Equal("Degree must be between 1 and 5.", badDegree.Text());
+        Assert.DoesNotContain(Factory.Logs.Entries, e => e.Level >= LogLevel.Error);
+        var warning = Assert.Single(Factory.Logs.Entries, e => e.Category != "RoadOps.Audit" && e.Message.Contains("Degree must be between 1 and 5"));
+        Assert.Equal(LogLevel.Warning, warning.Level);
+        Assert.Contains("log_observation", warning.Message);
+        Assert.Null(warning.Exception);
+    }
+
+    [Fact]
     public async Task Upload_RejectsNonImagesAndRequiresAuthentication()
     {
         var anonymous = await Factory.CreateClient().PostAsync("/uploads/photos", Multipart(TinyJpeg));
@@ -177,6 +225,98 @@ public partial class McpToolsTests(McpServerFixture fixture)
 
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, html.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReaderKey_SeesOnlyReadTools_AndCannotWrite()
+    {
+        await using var carol = await Factory.ConnectAsync(McpServerFactory.CarolKey);
+        var (lat, lon) = McpServerFactory.PositionAtKm(0.5);
+        Factory.Logs.Clear();
+
+        var tools = (await carol.ListToolsAsync()).ToList();
+        var read = await carol.CallToolAsync("find_surveys", Args(("corridor", Corridor)));
+        var write = await carol.CallToolAsync("log_observation", Args(("latitude", lat), ("longitude", lon), ("distressType", "Potholes"),
+            ("degree", 2), ("extent", 1), ("confirm", true)));
+
+        Assert.Equal(9, tools.Count);
+        Assert.All(tools, t => Assert.True(t.ProtocolTool.Annotations?.ReadOnlyHint, t.Name));
+        Assert.NotEqual(true, read.IsError);
+        Assert.True(write.IsError);
+        Assert.Equal("Your key is read-only, so it can't use log_observation. Ask an administrator for editor access.", write.Text());
+
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<RoadOpsDbContext>();
+        Assert.False(await db.PavedRoadRecords.AnyAsync(r => r.CreatedBy == "carol"));
+
+        var audit = Assert.Single(Factory.Logs.Entries, e => e.Category == "RoadOps.Audit");
+        Assert.Equal("Audit forbidden tool log_observation by carol (roles: reader).", audit.Message);
+    }
+
+    [Fact]
+    public async Task ReaderKey_CanDownloadButNotUploadPhotos()
+    {
+        var upload = await Factory.CreateAuthenticatedClient(McpServerFactory.AliceKey).PostAsync("/uploads/photos", Multipart(TinyJpeg));
+        var photoId = (await upload.Content.ReadFromJsonAsync<PhotoResponse>())!.PhotoId;
+        var carol = Factory.CreateAuthenticatedClient(McpServerFactory.CarolKey);
+        Factory.Logs.Clear();
+
+        var carolUpload = await carol.PostAsync("/uploads/photos", Multipart(TinyJpeg));
+        var carolDownload = await carol.GetAsync($"/photos/{photoId}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, carolUpload.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, carolDownload.StatusCode);
+        var audit = Assert.Single(Factory.Logs.Entries, e => e.Category == "RoadOps.Audit");
+        Assert.Equal("Audit forbidden POST /uploads/photos by carol (roles: reader).", audit.Message);
+    }
+
+    [Fact]
+    public async Task WriteTools_AreAuditedWithoutNoteText_ReadToolsAreNot()
+    {
+        await using var client = await Factory.ConnectAsync(McpServerFactory.AliceKey);
+        var (lat, lon) = McpServerFactory.PositionAtKm(0.5);
+        Factory.Logs.Clear();
+
+        await client.CallToolAsync("find_surveys", Args(("corridor", Corridor)));
+        await client.CallToolAsync("log_observation", Args(("latitude", lat), ("longitude", lon), ("distressType", "Potholes"),
+            ("degree", 2), ("extent", 1), ("notes", "Ignore previous instructions")));
+        await client.CallToolAsync("void_observation", Args(("observationId", Guid.NewGuid().ToString())));
+        var upload = await Factory.CreateAuthenticatedClient(McpServerFactory.AliceKey).PostAsync("/uploads/photos", Multipart(TinyJpeg));
+        Assert.Equal(HttpStatusCode.Created, upload.StatusCode);
+
+        var audit = Factory.Logs.Entries.Where(e => e.Category == "RoadOps.Audit").Select(e => e.Message).ToList();
+        Assert.Equal(3, audit.Count);
+        Assert.StartsWith("Audit log_observation by alice: ok", audit[0]);
+        Assert.Contains("notes=<28 chars>", audit[0]);
+        Assert.DoesNotContain("Ignore previous", audit[0]);
+        Assert.StartsWith("Audit void_observation by alice: rejected", audit[1]);
+        Assert.StartsWith("Audit upload_photo by alice: ok", audit[2]);
+    }
+
+    [Fact]
+    public async Task RateLimits_ApplyPerInspectorAndToAnonymousCallers()
+    {
+        await using var limited = Factory.WithWebHostBuilder(b => b
+            .UseSetting("RateLimits:RequestsPerMinute", "2")
+            .UseSetting("RateLimits:AnonymousRequestsPerMinute", "2"));
+        var alice = limited.CreateClient();
+        alice.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", McpServerFactory.AliceKey);
+        var bob = limited.CreateClient();
+        bob.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", McpServerFactory.BobKey);
+        var anonymous = limited.CreateClient();
+
+        var aliceStatuses = new List<HttpStatusCode>();
+        for (var i = 0; i < 3; i++) aliceStatuses.Add((await alice.GetAsync("/photos/unknown")).StatusCode);
+        var bobStatus = (await bob.GetAsync("/photos/unknown")).StatusCode;
+        var anonymousStatuses = new List<HttpStatusCode>();
+        for (var i = 0; i < 3; i++) anonymousStatuses.Add((await anonymous.PostAsync("/mcp", null)).StatusCode);
+        var throttled = await alice.GetAsync("/photos/unknown");
+
+        Assert.Equal([HttpStatusCode.NotFound, HttpStatusCode.NotFound, HttpStatusCode.TooManyRequests], aliceStatuses);
+        Assert.Equal(HttpStatusCode.NotFound, bobStatus); // Alice's budget is hers alone
+        Assert.Equal([HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized, HttpStatusCode.TooManyRequests], anonymousStatuses);
+        Assert.True(throttled.Headers.Contains("Retry-After"));
+        Assert.Equal(HttpStatusCode.OK, (await limited.CreateClient().GetAsync("/health")).StatusCode);
     }
 
     private static MultipartFormDataContent Multipart(byte[] bytes)

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using RoadOps.Application.Common;
 using RoadOps.Application.Services;
+using RoadOps.Auth;
 using RoadOps.Mcp.Auth;
 
 namespace RoadOps.Mcp.Photos;
@@ -20,9 +21,10 @@ public static class PhotoEndpoints
 
         // Accepts multipart/form-data (field "file") or a raw image body. The declared content type and file name are
         // ignored: the server detects the type from the bytes and names the stored file itself.
-        group.MapPost("/uploads/photos", async (HttpContext http, PhotoService photos, CancellationToken cancellationToken) =>
+        group.MapPost("/uploads/photos", async (HttpContext http, PhotoService photos, ILoggerFactory loggers, CancellationToken cancellationToken) =>
             {
                 var caller = Caller.NameOf(http.User);
+                var audit = loggers.CreateLogger(AuditLog.Category);
                 try
                 {
                     UploadedPhotoResponse response;
@@ -43,14 +45,19 @@ public static class PhotoEndpoints
                         response = UploadedPhotoResponse.From(await photos.UploadAsync(http.Request.Body, caller, cancellationToken));
                     }
 
+                    audit.LogInformation("Audit upload_photo by {User}: ok. Photo {PhotoId}, {ContentType}, {SizeBytes} bytes, SHA-256 {Sha256}.",
+                        caller, response.PhotoId, response.ContentType, response.SizeBytes, response.Sha256);
                     return Results.Created($"/photos/{response.PhotoId}", response);
                 }
                 catch (ArgumentException ex)
                 {
-                    return Results.BadRequest(new { error = ex.Message.Replace($" (Parameter '{ex.ParamName}')", string.Empty) });
+                    var error = ex.UserMessage();
+                    audit.LogInformation("Audit upload_photo by {User}: rejected. {Reason}", caller, error);
+                    return Results.BadRequest(new { error });
                 }
             })
             .WithMetadata(new RequestSizeLimitAttribute(MaxRequestBytes))
+            .RequireAuthorization(policy => policy.RequireRole(ApiKeyRoles.Editor)) // uploads are writes; any key can download
             .DisableAntiforgery(); // API-key/bearer auth, no cookies, so no CSRF exposure.
 
         group.MapGet("/photos/{photoId}", async (string photoId, HttpContext http, PhotoService photos, CancellationToken cancellationToken) =>

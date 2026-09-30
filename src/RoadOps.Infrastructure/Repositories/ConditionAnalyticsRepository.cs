@@ -115,7 +115,7 @@ public class ConditionAnalyticsRepository : IConditionAnalyticsRepository
                 From = g.Min(r => r.ChainageFrom),
                 To = g.Max(r => r.ChainageTo),
             })
-            .FirstOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken); // One group, so at most one row (no records in scope: none).
 
         if (totals is null)
         {

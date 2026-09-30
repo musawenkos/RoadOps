@@ -4,6 +4,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>roadops-api-dev</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\RoadOps.Application\RoadOps.Application.csproj" />
     <ProjectReference Include="..\RoadOps.Infrastructure\RoadOps.Infrastructure.csproj" />
+    <ProjectReference Include="..\RoadOps.Auth\RoadOps.Auth.csproj" />
   </ItemGroup>
 
 </Project>

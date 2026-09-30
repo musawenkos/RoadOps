@@ -4,7 +4,7 @@ namespace RoadOps.StressTests;
 
 /// <summary>
 /// What the stress tests hit. By default the API is hosted in-process against a PostgreSQL
-/// Testcontainer. Set STRESS_BASE_URL (e.g. http://localhost:5277) to load-test a running API instead.
+/// Testcontainer. Set STRESS_BASE_URL (e.g. http://localhost:5277) and STRESS_API_KEY to load-test a running API instead.
 /// </summary>
 public sealed class StressTarget : IAsyncLifetime
 {
@@ -20,6 +20,8 @@ public sealed class StressTarget : IAsyncLifetime
         if (!string.IsNullOrWhiteSpace(baseUrl))
         {
             Client = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(30) };
+            Client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", Environment.GetEnvironmentVariable("STRESS_API_KEY") ?? string.Empty);
             Description = $"running API at {baseUrl}";
             return;
         }

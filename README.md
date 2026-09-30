@@ -5,7 +5,7 @@ Survey data is organised as:
 
 ```
 Workspace (a survey campaign, e.g. "N1 Pretoria – Polokwane · VCI 2026")
- └── RoadSection (a stretch of road, e.g. "N1 S03: km 40.0–60.0")
+ └── RoadSection (a stretch of road with its km range, e.g. "N1 S03 (Hammanskraal)", km 40.0–60.0)
       └── PavedRoadRecord (one observation at a chainage: distress type, degree, extent, rut depth, GPS, photos...)
 ```
 
@@ -61,6 +61,31 @@ Host=localhost;Port=5432;Database=roadops;Username=roadops_user;Password=roadops
 
 ### 2. Run the API
 
+Every endpoint needs an API key. Create one and store only its SHA-256 hash; these keys are separate from the MCP
+server's inspector keys, because the REST API can create, rename and delete surveys:
+
+```powershell
+$hash = dotnet run --project src/RoadOps.Api --no-launch-profile -- hash-key "<a long random key>"
+dotnet user-secrets --project src/RoadOps.Api set "Api:ApiKeys:0:User" "admin"
+dotnet user-secrets --project src/RoadOps.Api set "Api:ApiKeys:0:KeyHash" $hash
+dotnet user-secrets --project src/RoadOps.Api set "Api:ApiKeys:0:Role" "admin"
+```
+
+Each key has one role; each role includes the ones above it:
+
+| Role | Can |
+|---|---|
+| `reader` | `GET` everything |
+| `editor` | also `POST` and `PUT`: create, rename and correct surveys, sections and records |
+| `admin` | also `DELETE`: hard deletes, which cascade (deleting a survey removes its sections and records) |
+
+A key without a role, or with an unknown one, is a `reader`, and startup logs a warning naming it. A request above the
+key's role gets `403` and is written to the audit log.
+
+Elsewhere use environment variables (`Api__ApiKeys__0__User`, `Api__ApiKeys__0__KeyHash`, `Api__ApiKeys__0__Role`). Send the key as
+`Authorization: Bearer <key>` or `X-Api-Key: <key>`; `RoadOps.Api.http` has an `@apiKey` variable for it.
+Requests are rate limited per user: 300 reads and 60 writes a minute by default (`RateLimits` in `appsettings.json`).
+
 ```bash
 dotnet run --project src/RoadOps.Api --launch-profile http
 ```
@@ -91,10 +116,16 @@ names, km and GPS instead of ids, and return short summaries meant to be spoken 
    $hash = dotnet run --project src/RoadOps.Mcp --no-launch-profile -- hash-key "<a long random key>"
    dotnet user-secrets --project src/RoadOps.Mcp set "Mcp:ApiKeys:0:User" "t.mokoena"
    dotnet user-secrets --project src/RoadOps.Mcp set "Mcp:ApiKeys:0:KeyHash" $hash
+   dotnet user-secrets --project src/RoadOps.Mcp set "Mcp:ApiKeys:0:Role" "editor"
    ```
 
-   In other environments use environment variables (`Mcp__ApiKeys__0__User`, `Mcp__ApiKeys__0__KeyHash`).
-   The user name is what gets recorded as `CreatedBy`; tools never accept it as an argument.
+   In other environments use environment variables (`Mcp__ApiKeys__0__User`, `Mcp__ApiKeys__0__KeyHash`,
+   `Mcp__ApiKeys__0__Role`). The user name is what gets recorded as `CreatedBy`; tools never accept it as an argument.
+
+   Roles are the same as the REST API's. A `reader` key (e.g. a manager asking about the backlog) gets the read tools
+   and photo downloads; the write tools are hidden from it and uploads return `403`. An `editor` (or `admin`) key also
+   gets the write tools and uploads, which is what inspectors need. A key without a role is a `reader`, and startup
+   logs a warning naming it.
 
 2. Start PostgreSQL (`docker compose up -d`) and the server:
 
@@ -139,10 +170,20 @@ curl -H "Authorization: Bearer <key>" -F "file=@pothole.jpg" http://localhost:52
 ```
 
 Only JPEG, PNG and WebP are accepted, detected from the file's bytes (the name and declared type are ignored), up to
-10 MB. Files are stored under server-generated names in `PhotoStorage:RootPath` (default `src/RoadOps.Mcp/data/photos`,
-git-ignored). `GET /photos/{photoId}` returns a photo.
+10 MB. The image structure is validated and metadata (EXIF GPS, device details, XMP, comments) is stripped before
+storing; the JPEG orientation is kept. Files are stored under server-generated names in `PhotoStorage:RootPath`
+(default `src/RoadOps.Mcp/data/photos`, git-ignored). `GET /photos/{photoId}` returns a photo.
+
+### Security
+
+Per-user rate limits on both servers (`RateLimits` in each `appsettings.json`, `429` + `Retry-After` when exceeded), an audit log of
+every write on both servers: MCP write tools, photo uploads, REST POST/PUT/DELETE (log category `RoadOps.Audit`), upload validation and stripping, and stored notes
+quoted as data. See [docs/SECURITY.md](docs/SECURITY.md) for the threat model, the OWASP mapping and the known limits.
 
 ## API
+
+All routes require an API key (see [Run the API](#2-run-the-api)); without one they return `401`. `createdBy` is set
+from the key's user name, and any `createdBy` in a request body is ignored.
 
 Enums are serialised as integers
 (`SurfaceType`: 0 Asphalt, 1 SurfaceSeal, 2 Concrete; `WorkspaceStatus`: 0 Active, 1 Suspended, 2 Archive, 3 Unknown).
@@ -152,13 +193,13 @@ Chainage is in kilometres.
 |---|---|---|
 | `GET` | `/api/workspaces` | List workspaces (paged) |
 | `GET` | `/api/workspaces/{id}` | Get a workspace |
-| `POST` | `/api/workspaces` | Create (`name`, `assessmentType`, `corridor`, `surveyYear`, `createdBy` required) |
+| `POST` | `/api/workspaces` | Create (`name`, `assessmentType`, `corridor`, `surveyYear` required) |
 | `PUT` | `/api/workspaces/{id}` | Update name, assessment type, corridor, survey year, status |
 | `DELETE` | `/api/workspaces/{id}` | Delete (cascades) |
 | `GET` | `/api/road-sections` | List sections (paged) |
 | `GET` | `/api/road-sections/{id}` | Get a section |
 | `GET` | `/api/road-sections/workspace/{workspaceId}` | Sections in a workspace (paged) |
-| `POST` | `/api/road-sections` | Create (`sectionName`, `workspaceId`, `chainageFrom`, `chainageTo`, `createdBy` required; workspace must exist) |
+| `POST` | `/api/road-sections` | Create (`sectionName`, `workspaceId`, `chainageFrom`, `chainageTo` required; workspace must exist) |
 | `PUT` | `/api/road-sections/{id}` | Rename and/or change the km range |
 | `DELETE` | `/api/road-sections/{id}` | Delete (cascades) |
 | `GET` | `/api/paved-road-records` | List records (paged, oldest first) |
@@ -255,7 +296,8 @@ The tests create their own uniquely named data, but don't point them at a databa
 
 Tunable with environment variables (the script sets them from its parameters): `STRESS_DURATION_SECONDS` (20),
 `STRESS_CONCURRENCY` (25), `STRESS_MAX_P95_MS` (500), `STRESS_MAX_ERROR_RATE` (0), `STRESS_BURST_SIZE` (500),
-`STRESS_BASE_URL`, `STRESS_REPORT_PATH`.
+`STRESS_BASE_URL` (with `STRESS_API_KEY`), `STRESS_REPORT_PATH`. A running API applies its rate limits, so set
+`RateLimits__RequestsPerMinute=0` and `RateLimits__WritesPerMinute=0` on it before load-testing it.
 
 ## Synthetic data
 
@@ -304,9 +346,9 @@ dotnet ef database update      --project src/RoadOps.Infrastructure --startup-pr
 ```
 ├── docker-compose.yml          # PostgreSQL for local development
 ├── docker/postgres/            # Postgres Dockerfile + first-run init scripts
-├── docs/ARCHITECTURE.md
+├── docs/                       # ARCHITECTURE.md, SECURITY.md
 ├── scripts/run-tests.ps1       # Test runner
-├── src/                        # Domain, Application, Infrastructure, Api
+├── src/                        # Domain, Application, Infrastructure, Api, Mcp, Auth (shared keys, rate limits, audit format)
 ├── tests/                      # Unit, integration (API and MCP), stress
 └── tools/RoadOps.DataSeeder/   # Synthetic data generator
 ```

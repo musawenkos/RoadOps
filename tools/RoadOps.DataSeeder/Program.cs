@@ -7,7 +7,7 @@ using RoadOps.Infrastructure.Data;
 // Usage:
 //   dotnet run --project tools/RoadOps.DataSeeder -- [--reset] [--seed 42] [--segment-km 0.1] [--connection "<cs>"]
 //
-//   --reset       Delete ALL existing workspaces/sections/records before seeding.
+//   --reset       Delete ALL existing workspaces/sections/records/photo records before seeding.
 //   --seed        Random seed; the same seed always produces the same data shape.
 //   --segment-km  Length of each assessed segment in km (default 0.1 = 100 m).
 //   --connection  PostgreSQL connection string. Falls back to ROADOPS_CONNECTION, then the docker-compose default.
@@ -32,7 +32,7 @@ await db.Database.MigrateAsync();
 if (reset)
 {
     Console.WriteLine("Removing existing data (--reset)...");
-    await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE paved_road_records, road_sections, workspaces");
+    await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE photos, paved_road_records, road_sections, workspaces");
 }
 else if (await db.Workspaces.AnyAsync())
 {

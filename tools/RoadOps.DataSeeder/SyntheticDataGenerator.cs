@@ -102,7 +102,8 @@ public sealed class SyntheticDataGenerator(int seed, double segmentKm)
                 {
                     Id = Guid.NewGuid().ToString(),
                     WorkspaceId = workspace.Id,
-                    SectionName = $"{route.Code} S{sectionNumber:00}: km {fromKm:F1}–{sectionEndKm:F1} ({RouteCatalog.NearestPlace(route, fromKm)})",
+                    // The km range lives in ChainageFrom/ChainageTo; repeating it in the name makes spoken results say it twice.
+                    SectionName = $"{route.Code} S{sectionNumber:00} ({RouteCatalog.NearestPlace(route, fromKm)})",
                     ChainageFrom = fromKm,
                     ChainageTo = sectionEndKm,
                     CreatedBy = inspector,

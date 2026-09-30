@@ -49,6 +49,12 @@ public static class RecommendedActionRules
             return NoAction;
         }
 
+        // A pothole of degree 3 or more is a safety hazard however small its extent, so it bypasses the routine threshold.
+        if (distress == "Potholes" && degree >= 3)
+        {
+            return UrgentPotholeRepair;
+        }
+
         var score = degree * extent;
         if (score <= RoutineScore)
         {
@@ -58,7 +64,7 @@ public static class RecommendedActionRules
         var severe = score > SevereScore;
         return distress switch
         {
-            "Potholes" => degree >= 3 ? UrgentPotholeRepair : PotholeRepair,
+            "Potholes" => PotholeRepair,
             "Crocodile cracking" or "Surface failure" or "Pumping" when severe => Rehabilitation,
             "Crocodile cracking" or "Surface failure" or "Pumping" or "Patching" => Patching,
             "Surface cracks" or "Aggregate loss" or "Binder condition" => severe ? Reseal : FogSpray,

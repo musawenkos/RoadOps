@@ -4,7 +4,7 @@ using RoadOps.Application.Repositories;
 using RoadOps.Application.Services;
 using RoadOps.Domain.Entities;
 using RoadOps.Infrastructure.Storage;
-using RoadOps.Mcp.Auth;
+using RoadOps.Auth;
 using RoadOps.Mcp.Tools;
 
 namespace RoadOps.UnitTests.Services;
@@ -12,6 +12,16 @@ namespace RoadOps.UnitTests.Services;
 public class PhotoServiceTests
 {
     private static readonly byte[] JpegHeader = [0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, (byte)'J', (byte)'F', (byte)'I', (byte)'F', 0, 1];
+
+    /// <summary>A structurally valid JPEG of the given length: SOI, APP0, a COM segment as padding, EOI.</summary>
+    private static MemoryStream Jpeg(int totalLength, string comment = "")
+    {
+        byte[] app0 = [0xFF, 0xE0, 0x00, 0x10, .. "JFIF"u8, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0];
+        var padding = totalLength - 2 - app0.Length - 4 - 2;
+        var com = new byte[padding];
+        System.Text.Encoding.ASCII.GetBytes(comment).CopyTo(com, 0);
+        return new MemoryStream([0xFF, 0xD8, .. app0, 0xFF, 0xFE, (byte)((padding + 2) >> 8), (byte)(padding + 2), .. com, 0xFF, 0xD9]);
+    }
 
     private readonly Mock<IPhotoRepository> _photos = new();
     private readonly Mock<IPhotoStorage> _storage = new();
@@ -35,10 +45,10 @@ public class PhotoServiceTests
         Photo? saved = null;
         _photos.Setup(r => r.AddAsync(It.IsAny<Photo>(), It.IsAny<CancellationToken>())).Callback<Photo, CancellationToken>((p, _) => saved = p);
 
-        var result = await _service.UploadAsync(Bytes(JpegHeader, 2048), "t.mokoena");
+        var result = await _service.UploadAsync(Jpeg(2048), "t.mokoena");
 
         Assert.Equal("image/jpeg", result.ContentType);
-        Assert.Equal(2048, result.SizeBytes);
+        Assert.Equal(22, result.SizeBytes); // SOI + APP0 + EOI; the comment segment is metadata and is stripped
         Assert.Equal(64, result.Sha256.Length);
         Assert.Equal($"2026/09/{result.Id}.jpg", saved!.StorageKey);
         Assert.Equal("t.mokoena", saved.UploadedBy);
@@ -74,9 +84,31 @@ public class PhotoServiceTests
     {
         _photos.Setup(r => r.AddAsync(It.IsAny<Photo>(), It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("db down"));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.UploadAsync(Bytes(JpegHeader, 100), "t.mokoena"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.UploadAsync(Jpeg(100), "t.mokoena"));
 
         _storage.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Upload_StoresTheStrippedBytes()
+    {
+        byte[]? stored = null;
+        _storage.Setup(s => s.SaveAsync(It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .Callback<string, Stream, CancellationToken>((_, stream, _) => stored = ((MemoryStream)stream).ToArray());
+
+        var result = await _service.UploadAsync(Jpeg(512, "GPS -25.74,28.19"), "t.mokoena");
+
+        Assert.Equal(result.SizeBytes, stored!.Length);
+        Assert.Equal(-1, stored.AsSpan().IndexOf("GPS"u8));
+        Assert.Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(stored)), result.Sha256);
+    }
+
+    [Fact]
+    public async Task Upload_MagicBytesWithoutAValidImage_IsRejected()
+    {
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UploadAsync(Bytes(JpegHeader, 100), "t.mokoena"));
+
+        Assert.Contains("not a valid JPEG", ex.Message);
     }
 
     [Theory]

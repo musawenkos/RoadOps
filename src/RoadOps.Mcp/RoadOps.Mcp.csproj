@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\RoadOps.Application\RoadOps.Application.csproj" />
     <ProjectReference Include="..\RoadOps.Infrastructure\RoadOps.Infrastructure.csproj" />
+    <ProjectReference Include="..\RoadOps.Auth\RoadOps.Auth.csproj" />
   </ItemGroup>
 
   <ItemGroup>
