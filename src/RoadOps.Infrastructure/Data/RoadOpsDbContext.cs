@@ -15,6 +15,7 @@ public class RoadOpsDbContext : DbContext
     public DbSet<RoadSection> RoadSections => Set<RoadSection>();
     public DbSet<PavedRoadRecord> PavedRoadRecords => Set<PavedRoadRecord>();
     public DbSet<Photo> Photos => Set<Photo>();
+    public DbSet<InspectorSession> InspectorSessions => Set<InspectorSession>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -30,5 +31,6 @@ public class RoadOpsDbContext : DbContext
         modelBuilder.ApplyConfiguration(new RoadSectionConfiguration());
         modelBuilder.ApplyConfiguration(new PavedRoadRecordConfiguration());
         modelBuilder.ApplyConfiguration(new PhotoConfiguration());
+        modelBuilder.ApplyConfiguration(new InspectorSessionConfiguration());
     }
 }

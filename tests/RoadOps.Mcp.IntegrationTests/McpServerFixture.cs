@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
@@ -58,6 +59,10 @@ public sealed class McpServerFactory : PostgresAppFactory<Program>
         await using var scope = Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<RoadOpsDbContext>();
         var now = DateTimeOffset.UtcNow.AddDays(-30);
+
+        // Session memory is keyed by inspector, not corridor, so a reused database (ROADOPS_TEST_CONNECTION) would
+        // otherwise carry the previous run's summaries into this one.
+        await db.InspectorSessions.Where(s => s.Inspector == "alice" || s.Inspector == "bob" || s.Inspector == "carol").ExecuteDeleteAsync();
 
         foreach (var year in new[] { 2024, 2026 })
         {

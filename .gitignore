@@ -172,4 +172,14 @@ TestResults/
 src/RoadOps.Mcp/data/
 
 # Local documentation (e.g. generated guides). Files already tracked, like docs/ARCHITECTURE.md, stay tracked.
-docs/
+docs/*
+!docs/friction-log.md
+!docs/SECURITY.md
+
+# Node (simulator)
+node_modules/
+
+# Local environment files
+.env
+.env.*
+!.env.example

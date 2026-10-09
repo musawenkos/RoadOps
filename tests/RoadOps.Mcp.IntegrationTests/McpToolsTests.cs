@@ -34,9 +34,9 @@ public partial class McpToolsTests(McpServerFixture fixture)
 
         var tools = (await client.ListToolsAsync()).ToDictionary(t => t.Name, t => t.ProtocolTool.Annotations);
 
-        Assert.Equal(13, tools.Count);
+        Assert.Equal(15, tools.Count);
         foreach (var read in new[] { "find_surveys", "list_sections", "get_condition_summary", "find_worst_stretches", "compare_surveys",
-                     "get_location_details", "get_repair_backlog", "locate_position", "list_distress_types" })
+                     "get_location_details", "get_repair_backlog", "locate_position", "list_distress_types", "get_session_summary" })
         {
             Assert.True(tools[read]!.ReadOnlyHint, read);
         }
@@ -46,6 +46,8 @@ public partial class McpToolsTests(McpServerFixture fixture)
         Assert.False(tools["attach_photo"]!.DestructiveHint);
         Assert.True(tools["update_observation"]!.DestructiveHint);
         Assert.True(tools["void_observation"]!.DestructiveHint);
+        Assert.False(tools["save_session_summary"]!.ReadOnlyHint);
+        Assert.False(tools["save_session_summary"]!.DestructiveHint);
         Assert.DoesNotContain(tools.Keys, name => name.Contains("delete"));
     }
 
@@ -239,7 +241,7 @@ public partial class McpToolsTests(McpServerFixture fixture)
         var write = await carol.CallToolAsync("log_observation", Args(("latitude", lat), ("longitude", lon), ("distressType", "Potholes"),
             ("degree", 2), ("extent", 1), ("confirm", true)));
 
-        Assert.Equal(9, tools.Count);
+        Assert.Equal(10, tools.Count);
         Assert.All(tools, t => Assert.True(t.ProtocolTool.Annotations?.ReadOnlyHint, t.Name));
         Assert.NotEqual(true, read.IsError);
         Assert.True(write.IsError);

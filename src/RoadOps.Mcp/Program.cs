@@ -48,6 +48,8 @@ builder.Services
             For analysis, chain the read tools: find_surveys, compare_surveys, find_worst_stretches, get_repair_backlog,
             then recommend. For field logging, pass the phone's GPS to log_observation, ask for anything it reports as
             missing, read the result back and only then call it again with confirm=true.
+            Voice sessions can drop: at the start of a session, or when the inspector says "let's continue", call
+            get_session_summary; when they stop, or ask you to remember something, call save_session_summary.
             Answers are often spoken aloud. Lead with a two or three sentence spoken summary: the verdict, the worst
             place by km and the most urgent action, with rounded numbers and no tables or lists. If you assumed
             something the user did not say, such as the latest survey year, say so in that summary. Then offer more
@@ -59,6 +61,7 @@ builder.Services
     .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateless)
     .WithPortableTools<SurveyTools>()
     .WithPortableTools<FieldTools>()
+    .WithPortableTools<SessionTools>()
     // Read-only keys (role reader) neither see nor can call the write tools; see ToolRoleFilter.
     .WithRequestFilters(filters => filters
         .AddListToolsFilter(ToolRoleFilter.HideWriteTools)

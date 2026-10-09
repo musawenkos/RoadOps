@@ -20,13 +20,14 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Registers the field-work services (observation logging, photos). Requires an <c>IPhotoStorage</c>, so only hosts
+    /// Registers the field-work services (observation logging, photos, session memory). Requires an <c>IPhotoStorage</c>, so only hosts
     /// that accept photo uploads (the MCP server) call this.
     /// </summary>
     public static IServiceCollection AddRoadOpsFieldWork(this IServiceCollection services)
     {
         services.AddScoped<FieldObservationService>();
         services.AddScoped<PhotoService>();
+        services.AddScoped<SessionMemoryService>();
         return services;
     }
 }

@@ -152,12 +152,16 @@ names, km and GPS instead of ids, and return short summaries meant to be spoken 
 | `get_repair_backlog` | read | Recommended actions grouped and counted, urgent first, with urgent locations |
 | `locate_position` | read | GPS → survey, section and km ("where am I?") |
 | `list_distress_types` | read | The accepted TMH9 distress names |
+| `get_session_summary` | read | Where you left off: survey, section and km (saved, or from your latest observation if newer), the previous survey's poor defects from there to the section end, your follow-ups |
 | `log_observation` | write | Log from GPS (or km) + distress + degree + extent (+ rut depth, measurements, notes). Returns what is missing or a read-back; saves only with `confirm=true` |
 | `attach_photo` | write | Attach an uploaded photo to an observation (default: your latest) |
 | `update_observation` | write, destructive | Add or correct measurements, notes, degree or extent on your own observation |
 | `void_observation` | write, destructive | Soft-void your own observation within 10 minutes of logging it |
+| `save_session_summary` | write | Remember where you are (GPS, km or survey) and your follow-ups, for the next voice session. One summary per inspector (`inspector_sessions` table) |
 
-There are no delete tools, and surveys and sections can only be created or renamed through the REST API.
+There are no delete tools, and surveys and sections can only be created or renamed through the REST API. Each inspector
+only reads and saves their own session summary; follow-up text is quoted as data when read back and logged only as its
+length in the audit log.
 
 ### Photos
 
@@ -179,6 +183,14 @@ storing; the JPEG orientation is kept. Files are stored under server-generated n
 Per-user rate limits on both servers (`RateLimits` in each `appsettings.json`, `429` + `Retry-After` when exceeded), an audit log of
 every write on both servers: MCP write tools, photo uploads, REST POST/PUT/DELETE (log category `RoadOps.Audit`), upload validation and stripping, and stored notes
 quoted as data. See [docs/SECURITY.md](docs/SECURITY.md) for the threat model, the OWASP mapping and the known limits.
+
+### Voice agent (simulated Alexa+)
+
+`simulator/AlexaPlusSimulator` runs the RoadOps voice agent: a simulated Alexa+ device
+([mcp-voice-simulator](https://github.com/musawenkos/mcp-voice-simulator), our fork) whose Bedrock brain calls these
+tools in a loop on Amazon Bedrock, with the RoadOps system prompt and the phone's GPS and photos as context. Writes
+always need a confirmation turn, enforced in code. See [its README](simulator/AlexaPlusSimulator/README.md) to run it,
+and [docs/friction-log.md](docs/friction-log.md) for problems met along the way.
 
 ## API
 
@@ -346,9 +358,14 @@ dotnet ef database update      --project src/RoadOps.Infrastructure --startup-pr
 ```
 ├── docker-compose.yml          # PostgreSQL for local development
 ├── docker/postgres/            # Postgres Dockerfile + first-run init scripts
-├── docs/                       # ARCHITECTURE.md, SECURITY.md
+├── docs/                       # ARCHITECTURE.md, SECURITY.md, friction-log.md
 ├── scripts/run-tests.ps1       # Test runner
+├── simulator/AlexaPlusSimulator/ # Voice agent: simulated Alexa+ with a Bedrock brain (Node/TypeScript)
 ├── src/                        # Domain, Application, Infrastructure, Api, Mcp, Auth (shared keys, rate limits, audit format)
 ├── tests/                      # Unit, integration (API and MCP), stress
 └── tools/RoadOps.DataSeeder/   # Synthetic data generator
 ```
+
+## License
+
+[MIT](LICENSE)

@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<IPavedRoadRecordRepository, PavedRoadRecordRepository>();
         services.AddScoped<IConditionAnalyticsRepository, ConditionAnalyticsRepository>();
         services.AddScoped<IPhotoRepository, PhotoRepository>();
+        services.AddScoped<IInspectorSessionRepository, InspectorSessionRepository>();
         return services;
     }
 

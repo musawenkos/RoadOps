@@ -11,7 +11,7 @@ public static class AuditLog
 {
     public const string Category = "RoadOps.Audit";
 
-    private static readonly HashSet<string> FreeTextArguments = new(StringComparer.OrdinalIgnoreCase) { "notes" };
+    private static readonly HashSet<string> FreeTextArguments = new(StringComparer.OrdinalIgnoreCase) { "notes", "followUps" };
 
     /// <summary>"name=value, ..." sorted by name; free text is replaced by its length and long values are shortened.</summary>
     public static string DescribeArguments(IEnumerable<KeyValuePair<string, JsonElement>>? arguments, IReadOnlySet<string>? skip = null)

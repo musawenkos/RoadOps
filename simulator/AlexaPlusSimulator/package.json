@@ -1,0 +1,26 @@
+{
+  "name": "roadops-alexa-plus-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RoadOps voice agent: the mcp-voice-simulator with a Bedrock brain, the RoadOps system prompt and field context (GPS, photos).",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1147.0",
+    "mcp-voice-simulator": "file:vendor/mcp-voice-simulator-0.2.2-aa2b042.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.11"
+  }
+}
