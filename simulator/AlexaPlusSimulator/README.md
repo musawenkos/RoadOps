@@ -69,8 +69,8 @@ dotnet run --project src/RoadOps.Mcp --launch-profile http
 
 # ...then, in another terminal, this app
 cd simulator\AlexaPlusSimulator
-$env:MCP_BEARER_TOKEN = "<the inspector's MCP API key>"
-$env:AWS_PROFILE = "roadops-bedrock"
+$env:MCP_BEARER_TOKEN = "<the inspector's MCP API key>"   # the key itself, not its hash
+$env:AWS_PROFILE = "<your AWS profile with Bedrock access>"
 $env:SIM_GPS = "-25.3951, 28.2799"   # optional: a starting position on the N1
 npm start
 ```
@@ -114,5 +114,5 @@ Manual checks against real Bedrock and the running MCP server: [MANUAL-TESTS.md]
 MCP server (a few cheap calls):
 
 ```powershell
-$env:AWS_PROFILE = "roadops-bedrock"; npx tsx scripts/bedrock-smoke.ts   # the default model; or pass a model id
+$env:AWS_PROFILE = "<your AWS profile>"; npx tsx scripts/bedrock-smoke.ts   # the default model; or pass a model id
 ```

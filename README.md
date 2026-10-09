@@ -11,9 +11,15 @@ Workspace (a survey campaign, e.g. "N1 Pretoria – Polokwane · VCI 2026")
 
 Deleting a workspace cascades to its sections and records.
 
+RoadOps also works as a **voice agent**: an MCP server lets an assistant such as Alexa+ log defects where the inspector
+stands, by voice, and answer planning questions such as "What changed on the N1 between 2024 and 2026, and where should
+we spend first?". Alexa+ is simulated here, with Claude on Amazon Bedrock as the agent. To try it: steps 1 to 3 of
+[Getting started](#getting-started), then [run the MCP server](#run-it), then the
+[voice simulator](simulator/AlexaPlusSimulator/README.md).
+
 ## Architecture
 
-Clean architecture, four projects under `src/`:
+Clean architecture, five projects under `src/`:
 
 | Project | Responsibility |
 |---|---|
@@ -30,6 +36,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the dependency graph, CRUD 
 - [.NET SDK 9.0](https://dotnet.microsoft.com/download)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for PostgreSQL and the integration/stress tests)
 - Optional: `dotnet tool install -g dotnet-ef` to manage migrations
+- For the voice agent: [Node.js 20+](https://nodejs.org/) and an AWS account with Amazon Bedrock access to an Anthropic
+  Claude model (the default is Claude Haiku 4.5), set up as an AWS CLI profile
 
 ## Getting started
 
@@ -91,9 +99,10 @@ dotnet run --project src/RoadOps.Api --launch-profile http
 ```
 
 The API listens on `http://localhost:5277`. In Development, pending EF Core migrations are applied automatically on startup
-(controlled by `Database:ApplyMigrationsOnStartup`). The OpenAPI document is at `/openapi/v1.json`.
+(controlled by `Database:ApplyMigrationsOnStartup`). On an empty database the first start logs one
+`fail: ... Failed executing DbCommand` while EF Core checks for its migrations table; that is expected. The OpenAPI document is at `/openapi/v1.json`.
 
-### 3. Load synthetic data (optional)
+### 3. Load synthetic data (needed for the voice agent)
 
 ```bash
 dotnet run --project tools/RoadOps.DataSeeder
